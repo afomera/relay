@@ -156,7 +156,7 @@ No wildcard issuance for customer domains in v1.
 
 ## 8. Data model (sketch)
 
-Schemas match on SQLite and Postgres via `sqlx`. IDs are UUIDs (stored as TEXT on SQLite, UUID on Postgres — handled by a wrapper type).
+Schemas match on SQLite and Postgres via `sqlx`. IDs are UUIDs (stored as BLOB on SQLite, UUID on Postgres — see DECISIONS.md D23).
 
 ```
 organizations (id, name, slug, created_at)
@@ -237,7 +237,8 @@ provider = "cloudflare"          # cloudflare | route53 | rfc2136
 # provider-specific config below
 
 [db]
-url = "sqlite:///var/lib/relay/relay.db"   # or postgres://...
+# Pick one. Managed-Postgres deploys usually set url_env = "DATABASE_URL".
+url = "sqlite:///var/lib/relay/relay.db"   # or postgres://user:pass@host/db?sslmode=require
 
 [github_oauth]
 client_id = "..."

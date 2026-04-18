@@ -42,7 +42,7 @@ Minimum fields to change:
 - `server.public_url` — where the dashboard lives.
 - `domains.base` — your tunnel domain (no scheme, no wildcard).
 - `github_oauth.client_id` — your OAuth app's client id.
-- `db.url` — SQLite path or Postgres URL.
+- `db` — see [Database](#database) below.
 - `dns.cloudflare.zone_id` — the Cloudflare zone id for `domains.base`.
 
 Then set environment variables:
@@ -52,6 +52,55 @@ export RELAY_DATA_KEY="$(head -c 32 /dev/urandom | base64)"
 export GITHUB_OAUTH_SECRET="your-github-app-secret"
 export CLOUDFLARE_API_TOKEN="cf-token-with-zone-dns-edit"
 ```
+
+## Database
+
+Pick one of **SQLite** or **Postgres** at deploy time. There is no migration
+tool between them — switch by pointing at a fresh data store and letting the
+embedded migrations run.
+
+### SQLite (default)
+
+Simplest. One file on disk, no other moving parts. Good for single-host
+deploys.
+
+```toml
+[db]
+url = "sqlite:///var/lib/relay/relay.db"
+```
+
+### Postgres
+
+Use a managed service (PlanetScale Postgres, Neon, Crunchy Bridge, Fly
+Postgres) or a self-hosted instance. The driver speaks TLS out of the box
+with the bundled Mozilla CA roots — no system-trust fiddling.
+
+Connection string is standard libpq. Pass through whatever the provider gives
+you including `sslmode=require` / `verify-full` params. PlanetScale
+Postgres (relay's prod) targets 18.3:
+
+```toml
+[db]
+# Option A: literal URL in the config file.
+url = "postgres://USER:PASS@ep-xxxxx.us-east-1.planetscale.pg:5432/relay?sslmode=require"
+
+# Option B: read the URL from an env var at boot. Preferred for PaaS deploys
+# that inject DATABASE_URL (Fly, Railway, etc.) and for keeping secrets out
+# of the config file.
+url_env = "DATABASE_URL"
+
+# Optional tuning. Defaults: SQLite = 10, Postgres = 20, acquire_timeout = 5s.
+max_connections      = 20
+acquire_timeout_secs = 5
+```
+
+`url_env` takes precedence when both are set. If neither is set the server
+refuses to start with a clear error.
+
+Schema differences between the two backends are intentional (native `UUID`
+on Postgres, native `BOOLEAN` for flag columns, `BYTEA` for captured bodies)
+but the DAL hides them — application code doesn't branch on the backend. See
+`DECISIONS.md` D3/D22/D23/D24 for the mapping.
 
 ## Run with docker-compose
 
@@ -126,4 +175,4 @@ See `SPEC.md` §14 for milestones. As of this build:
 | M4 TCP tunnels + port pool        | Implemented |
 | M5 Request inspection             | Capture + DB schema scaffolded; UI viewer is TODO |
 | M6 Custom domains                 | CRUD + UI present; DNS TXT verification is a stub |
-| Postgres DB backend               | Stubbed — SQLite only for now |
+| Postgres DB backend               | Implemented; PlanetScale Postgres 18.3 in CI |

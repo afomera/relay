@@ -170,3 +170,41 @@ migration will use the native `UUID` type.
 **Rationale:** we tried `TEXT` first; `sqlx` decodes `Uuid` from `TEXT` only if
 the column holds the 16-byte binary form, which defeats the point. `BLOB` gives
 us round-trip-correct native `Uuid` in Rust with no newtype wrapper.
+
+## D24 — Postgres backend landed (supersedes D21's "typed stub")
+
+Postgres is now a first-class backend alongside SQLite. The stub behaviour D21
+documented no longer exists.
+
+**Architecture:**
+
+- `Db` is a two-variant enum (`Sqlite(SqlitePool)`, `Postgres(PgPool)`).
+- Per-engine DAL fns live under `crates/relay-db/src/backend/{sqlite,postgres}.rs`
+  with byte-identical signatures. Each crate-root dispatcher (`relay_db::foo`)
+  matches on the enum and forwards to the right backend.
+- `sqlx::Any` is deliberately rejected, same reasons as D21 — we keep native
+  typed bindings on both sides, including `Uuid`, `bool`, and `i64`.
+- Migrations live in two compile-time-embedded directories
+  (`migrations/sqlite/` and `migrations/postgres/`), dispatched by
+  `Db::migrate`. Single-binary self-host (D15) is preserved.
+
+**Schema type mapping:**
+
+| Concept | SQLite | Postgres |
+|---|---|---|
+| Primary/foreign UUID | `BLOB` | `UUID` |
+| Unix-epoch timestamp (`*_at`) | `INTEGER` (i64) | `BIGINT` (i64) |
+| Flag column (`inspect`, `truncated`) | `INTEGER` 0/1 | `BOOLEAN` |
+| Body buffer (`req_body`, `resp_body`) | `BLOB` | `BYTEA` |
+| JSON-shaped (`*_json`) | `TEXT` | `TEXT` — no JSONB for now |
+
+**Rationale for sticking with `TEXT` for JSON:** no JSON querying in the DAL
+today, and keeping the serialization path identical on both engines avoids an
+encoding split. JSONB is easy to add later without a schema break.
+
+**Managed-service friendliness:** sqlx pulls in `tls-rustls-ring-webpki`, so
+the driver talks TLS to PlanetScale Postgres / Neon / Crunchy / Fly without
+needing the system trust store. `[db]` grows `url_env`, `max_connections`,
+and `acquire_timeout_secs`; `url_env` takes precedence over `url` so PaaS
+deploys don't commit a `DATABASE_URL` to config. Prod currently runs
+PlanetScale Postgres 18.3.
