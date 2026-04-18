@@ -8,9 +8,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::body::Body;
+use axum::extract::connect_info::Connected;
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode};
-use axum::extract::connect_info::Connected;
 use futures::StreamExt;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
@@ -378,14 +378,11 @@ fn is_101_hop_by_hop(name: &str) -> bool {
 }
 
 fn is_ws_upgrade_request(headers: &HeaderMap) -> bool {
-    let connection_has_upgrade = headers
-        .get_all(http::header::CONNECTION)
-        .iter()
-        .any(|v| {
-            v.to_str().ok().is_some_and(|s| {
-                s.split(',').any(|t| t.trim().eq_ignore_ascii_case("upgrade"))
-            })
-        });
+    let connection_has_upgrade = headers.get_all(http::header::CONNECTION).iter().any(|v| {
+        v.to_str()
+            .ok()
+            .is_some_and(|s| s.split(',').any(|t| t.trim().eq_ignore_ascii_case("upgrade")))
+    });
     let upgrade_is_websocket = headers
         .get(http::header::UPGRADE)
         .and_then(|v| v.to_str().ok())

@@ -179,10 +179,9 @@ async fn ws_tunnel_end_to_end() {
     // tunnel hostname in the Host header so the edge routes to our tunnel.
     let url = format!("ws://127.0.0.1:{http_port}/");
     let mut request = url.into_client_request().unwrap();
-    request.headers_mut().insert(
-        http::header::HOST,
-        http::HeaderValue::from_str(&hostname).unwrap(),
-    );
+    request
+        .headers_mut()
+        .insert(http::header::HOST, http::HeaderValue::from_str(&hostname).unwrap());
 
     let (mut ws, response) = tokio_tungstenite::connect_async(request).await.expect("ws connect");
     assert_eq!(response.status().as_u16(), 101);
