@@ -33,6 +33,7 @@ uuid.workspace = true
 futures.workspace = true
 bytes.workspace = true
 reqwest.workspace = true
+httparse.workspace = true
 tokio-util.workspace = true
 tokio-stream.workspace = true
 http.workspace = true

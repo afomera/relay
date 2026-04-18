@@ -8,5 +8,13 @@ export default defineConfig({
   integrations: [icon({ include: { lucide: ["*"] } })],
   vite: {
     plugins: [tailwindcss()],
+    server: {
+      allowedHosts: ["andrea.sharedwithrelay.com", ".sharedwithrelay.com"],
+      hmr: {
+        host: "andrea.sharedwithrelay.com",
+        protocol: "wss",
+        clientPort: 443,
+      },
+    },
   },
 });

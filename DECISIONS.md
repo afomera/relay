@@ -108,11 +108,20 @@ If an temporary name collides with an already-active tunnel, retry 5 times. With
 
 **Rationale:** probabilistic OK; alternative (sequential counters) leaks tunnel volume.
 
-## D17 — WebSocket support: free with HTTP
+## D17 — WebSocket support: detect upgrade, switch to raw byte copy
 
-WS uses HTTP Upgrade, so the HTTP ingress just proxies bytes after the 101 response without trying to parse further. No extra CLI flag.
+Under the same `TunnelKind::Http` tunnel, each request starts as a normal HTTP/1.1 exchange. Both ends inspect the request headers — if `Connection: upgrade` + `Upgrade: websocket` are present, they branch:
 
-**Rationale:** spec calls this out; no reason to separate it from HTTP tunnels.
+- **Edge** captures `hyper::upgrade::OnUpgrade` from the request, skips the usual request-body forwarder (upgrade requests have no body in the HTTP/1.1 sense), reads the `HttpResponseHeader` frame from the CLI, and — on `101 Switching Protocols` — preserves `Connection`/`Upgrade` on the response, returns the 101, then spawns a bidirectional byte-copy task between the `Upgraded` IO and the QUIC bidi stream.
+- **CLI** opens a raw TCP socket to the local port, hand-rolls the HTTP/1.1 request, parses the response status + headers with `httparse`, forwards them via `HttpResponseHeader`, and does the same bidi copy between local TCP and QUIC.
+
+Both sides propagate half-close: QUIC-recv EOF triggers a write-half shutdown on the peer socket, so browsers don't hang waiting for bytes that will never come.
+
+Only HTTP/1.1 is supported. RFC 8441 (WS over h2, extended CONNECT) is not implemented — browsers default to h1 for WS handshakes unless the server advertises `SETTINGS_ENABLE_CONNECT_PROTOCOL`, which we don't.
+
+Plain HTTP ingress uses a manual `serve_connection_with_upgrades` accept loop (mirror of the HTTPS ingress). `axum::serve` uses `serve_connection` without upgrade support, so we bypass it.
+
+**Rationale:** there is no way to tunnel WebSockets through a high-level HTTP client (`reqwest`) — once the 101 is returned, the underlying socket must be surrendered for raw I/O. The CLI hand-rolls HTTP/1.1 only for the upgrade path; non-upgrade traffic still goes through `reqwest` unchanged.
 
 ## D18 — QUIC idle timeout: 30 seconds; keepalive every 10 seconds
 

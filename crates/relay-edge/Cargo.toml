@@ -43,4 +43,6 @@ reqwest.workspace = true
 tracing-subscriber.workspace = true
 axum.workspace = true
 relay-cli = { path = "../relay-cli" }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
 

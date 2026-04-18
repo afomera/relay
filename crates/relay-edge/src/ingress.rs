@@ -10,9 +10,14 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode};
+use axum::extract::connect_info::Connected;
 use futures::StreamExt;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use relay_proto::{HttpRequestHeader, HttpResponseHeader, StreamOpen};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tower::Service;
 use uuid::Uuid;
 
 use crate::config::EdgeConfig;
@@ -30,10 +35,51 @@ pub(crate) struct AppState {
 pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Result<()> {
     let state = AppState { reg, cfg: cfg.clone() };
     let app = axum::Router::new().fallback(handle).with_state(state);
+    let make_svc = app.into_make_service_with_connect_info::<SocketAddr>();
     let listener = TcpListener::bind(cfg.bind_http).await?;
     tracing::info!(addr = %cfg.bind_http, "edge HTTP ingress bound");
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
-    Ok(())
+
+    // `axum::serve` uses `serve_connection` (no upgrades). We need
+    // `serve_connection_with_upgrades` so HTTP/1.1 WebSocket upgrades work
+    // over the plain HTTP listener too — same pattern as ingress_https.rs.
+    loop {
+        let (tcp, remote) = match listener.accept().await {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::warn!(?e, "tcp accept");
+                continue;
+            }
+        };
+        let mut make_svc = make_svc.clone();
+        tokio::spawn(async move {
+            let info = HttpConnectInfo(remote);
+            let tower_service = match make_svc.call(info).await {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            let hyper_service = hyper::service::service_fn(move |req| {
+                let mut s = tower_service.clone();
+                async move { s.call(req).await }
+            });
+            if let Err(e) = auto::Builder::new(TokioExecutor::new())
+                .serve_connection_with_upgrades(TokioIo::new(tcp), hyper_service)
+                .await
+            {
+                tracing::debug!(?e, %remote, "connection ended");
+            }
+        });
+    }
+}
+
+/// Adapter so `axum::extract::ConnectInfo<SocketAddr>` is populated from our
+/// manual accept loop — axum normally fills this via `axum::serve`.
+#[derive(Clone)]
+struct HttpConnectInfo(SocketAddr);
+
+impl Connected<HttpConnectInfo> for SocketAddr {
+    fn connect_info(target: HttpConnectInfo) -> Self {
+        target.0
+    }
 }
 
 pub(crate) async fn handle(
@@ -105,6 +151,12 @@ async fn handle_inner(
         ));
     };
 
+    // WebSocket / HTTP Upgrade detection. Only HTTP/1.1 supports classical
+    // upgrades; h2 would need RFC 8441 extended CONNECT, which we don't
+    // implement (yet). Browsers default to h1 for WS handshakes anyway.
+    let is_upgrade =
+        req.version() == http::Version::HTTP_11 && is_ws_upgrade_request(req.headers());
+
     let (mut send, mut recv) = handle.conn.open_bi().await?;
 
     let request_id = Uuid::new_v4();
@@ -125,6 +177,10 @@ async fn handle_inner(
         tls: false,
     };
     relay_proto::write_frame(&mut send, &StreamOpen::Http(header)).await?;
+
+    if is_upgrade {
+        return upgrade_path(req, send, recv).await;
+    }
 
     // Two paths: inspected (buffer + capture) and streaming (existing).
     if handle.inspect {
@@ -304,6 +360,144 @@ fn is_ingress_hop_by_hop(name: &str) -> bool {
             | "te"
             | "trailer"
     )
+}
+
+/// Same as `is_ingress_hop_by_hop` but preserves `connection` and `upgrade` —
+/// both are required on a 101 Switching Protocols response for the handshake
+/// to be valid.
+fn is_101_hop_by_hop(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "keep-alive"
+            | "transfer-encoding"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+    )
+}
+
+fn is_ws_upgrade_request(headers: &HeaderMap) -> bool {
+    let connection_has_upgrade = headers
+        .get_all(http::header::CONNECTION)
+        .iter()
+        .any(|v| {
+            v.to_str().ok().is_some_and(|s| {
+                s.split(',').any(|t| t.trim().eq_ignore_ascii_case("upgrade"))
+            })
+        });
+    let upgrade_is_websocket = headers
+        .get(http::header::UPGRADE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|s| s.eq_ignore_ascii_case("websocket"));
+    connection_has_upgrade && upgrade_is_websocket
+}
+
+/// Handles a WebSocket / HTTP/1.1 upgrade. Extracts `OnUpgrade` from the
+/// request (so we can take over the raw socket after the 101 is flushed),
+/// reads the local service's response header via QUIC, and — on 101 —
+/// spawns a bidirectional byte-copy task between the upgraded IO and the
+/// QUIC stream. On any non-101 status we fall through and stream the
+/// response normally.
+async fn upgrade_path(
+    mut req: Request<Body>,
+    mut send: quinn::SendStream,
+    mut recv: quinn::RecvStream,
+) -> anyhow::Result<Response<Body>> {
+    let on_upgrade = req.extensions_mut().remove::<hyper::upgrade::OnUpgrade>();
+
+    // Upgrade requests don't carry a body that's delivered via hyper's Body
+    // stream — post-101 bytes come through the Upgraded IO. So we do NOT
+    // spawn the usual body-forwarding task; that would finish the send
+    // stream prematurely and close the client→server half of the channel.
+    let resp_hdr: HttpResponseHeader = relay_proto::read_frame(&mut recv).await?;
+
+    if resp_hdr.status != 101 {
+        // Local service didn't switch protocols (e.g. 400/401). Drop the
+        // upgrade future and stream the response body as normal.
+        let _ = send.finish();
+        let mut builder = Response::builder().status(resp_hdr.status);
+        for (k, v) in &resp_hdr.headers {
+            if is_ingress_hop_by_hop(k) {
+                continue;
+            }
+            let Ok(name) = HeaderName::try_from(k.as_str()) else { continue };
+            let Ok(value) = HeaderValue::try_from(v.as_str()) else { continue };
+            builder = builder.header(name, value);
+        }
+        let body_stream = tokio_util::io::ReaderStream::new(recv);
+        return Ok(builder.body(Body::from_stream(body_stream))?);
+    }
+
+    let Some(on_upgrade) = on_upgrade else {
+        return Ok(error_page(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "connection does not support upgrade",
+        ));
+    };
+
+    let mut builder = Response::builder().status(StatusCode::SWITCHING_PROTOCOLS);
+    for (k, v) in &resp_hdr.headers {
+        if is_101_hop_by_hop(k) {
+            continue;
+        }
+        let Ok(name) = HeaderName::try_from(k.as_str()) else { continue };
+        let Ok(value) = HeaderValue::try_from(v.as_str()) else { continue };
+        builder = builder.header(name, value);
+    }
+    let resp = builder.body(Body::empty())?;
+
+    tokio::spawn(async move {
+        let upgraded = match on_upgrade.await {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::debug!(?e, "upgrade future failed");
+                return;
+            }
+        };
+        let upgraded = TokioIo::new(upgraded);
+        let (mut u_read, mut u_write) = tokio::io::split(upgraded);
+        let upgraded_to_quic = async {
+            let mut buf = [0u8; 16 * 1024];
+            loop {
+                match u_read.read(&mut buf).await {
+                    Ok(0) => {
+                        let _ = send.finish();
+                        break;
+                    }
+                    Ok(n) => {
+                        if send.write_all(&buf[..n]).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        };
+        let quic_to_upgraded = async {
+            let mut buf = [0u8; 16 * 1024];
+            loop {
+                match recv.read(&mut buf).await {
+                    Ok(Some(0)) | Ok(None) => {
+                        // QUIC EOF — propagate half-close to the client by
+                        // shutting down the write side of the upgraded IO.
+                        // Without this, the browser's read side waits forever.
+                        let _ = u_write.shutdown().await;
+                        break;
+                    }
+                    Ok(Some(n)) => {
+                        if u_write.write_all(&buf[..n]).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        };
+        tokio::join!(upgraded_to_quic, quic_to_upgraded);
+    });
+
+    Ok(resp)
 }
 
 fn error_page(status: StatusCode, msg: &str) -> Response<Body> {
