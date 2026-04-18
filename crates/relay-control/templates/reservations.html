@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}reservations · relay{% endblock %}
+{% block body %}
+<header class="page-header">
+  <h1>reservations</h1>
+  <p class="sub">Reserving <code>andrea</code> gives your workspace every hostname under <code>*.andrea.{{ base_domain }}</code> (and the apex).</p>
+</header>
+
+<div class="card">
+  <form method="post" action="/reservations" class="inline">
+    <input type="text" name="label" placeholder="label (e.g. andrea)" pattern="[a-z0-9-]+" required>
+    <button type="submit">{{ crate::icons::icon("plus")|safe }} reserve</button>
+  </form>
+</div>
+
+<div class="card">
+  {% if reservations.is_empty() %}
+  <p class="muted">No reservations yet.</p>
+  {% else %}
+  <table>
+    <thead><tr><th>label</th><th>covered hostnames</th><th>created</th><th></th></tr></thead>
+    <tbody>
+      {% for r in reservations %}
+      <tr>
+        <td class="mono">{{ r.label }}</td>
+        <td class="mono secondary">*.{{ r.label }}.{{ base_domain }}</td>
+        <td class="muted" title="{{ crate::templates::format_time(r.created_at) }}">{{ crate::templates::time_ago(r.created_at) }}</td>
+        <td class="actions">
+          <form method="post" action="/reservations/{{ r.id }}/delete" style="display:inline"
+                onsubmit="return confirm('Release reservation {{ r.label }}?');">
+            <button class="icon-btn danger" type="submit" title="release">{{ crate::icons::icon("trash")|safe }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

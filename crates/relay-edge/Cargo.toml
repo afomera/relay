@@ -1,0 +1,46 @@
+[package]
+name = "relay-edge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Public-facing data plane: QUIC tunnel server + HTTP/TCP ingress + routing."
+
+[dependencies]
+tokio.workspace = true
+tokio-rustls = "0.26"
+quinn.workspace = true
+rustls.workspace = true
+rcgen.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+bytes.workspace = true
+dashmap.workspace = true
+tokio-util.workspace = true
+tokio-stream.workspace = true
+parking_lot.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+uuid.workspace = true
+rand.workspace = true
+time.workspace = true
+relay-proto = { path = "../relay-proto" }
+relay-acme = { path = "../relay-acme" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+reqwest.workspace = true
+tracing-subscriber.workspace = true
+axum.workspace = true
+relay-cli = { path = "../relay-cli" }
+

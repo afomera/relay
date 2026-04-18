@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ tunnel.hostname }} · relay{% endblock %}
+{% block body %}
+<header class="page-header">
+  <a href="/" class="row muted small">{{ crate::icons::icon("arrow-left")|safe }} all tunnels</a>
+  <h1 class="mono" style="margin-top:0.5rem">{{ url }}</h1>
+  <div class="sub row" style="gap:0.75rem;flex-wrap:wrap">
+    <span>kind <strong class="secondary">{{ tunnel.kind }}</strong></span>
+    <span id="tunnel-state">
+      {% if tunnel.state == "active" %}<span class="pill active"><span class="dot"></span>active</span>
+      {% else %}<span class="pill offline">{{ tunnel.state }}</span>{% endif %}
+    </span>
+    <span id="tunnel-last-seen" title="{{ crate::templates::format_time(tunnel.last_seen_at) }}">last seen {{ crate::templates::time_ago(tunnel.last_seen_at) }}</span>
+  </div>
+</header>
+
+<div class="card">
+  <div class="space-between" style="margin-bottom:0.75rem">
+    <h2 style="margin:0">recent requests</h2>
+    {% if !captures.is_empty() %}
+    <form method="post" action="/tunnels/{{ tunnel.id }}/captures/clear"
+          onsubmit="return confirm('Delete every captured request on this tunnel?');">
+      <button type="submit" class="ghost">{{ crate::icons::icon("trash")|safe }} clear requests</button>
+    </form>
+    {% endif %}
+  </div>
+  <p id="captures-empty" class="muted" {% if !captures.is_empty() %}hidden{% endif %}>No captured requests yet.
+    {% if tunnel.inspect == 0 %}Inspection is off for this tunnel — drop <code>--no-inspect</code> on the CLI to capture.{% endif %}
+  </p>
+  <table id="captures-table" {% if captures.is_empty() %}hidden{% endif %}>
+    <thead>
+      <tr><th>method</th><th>path</th><th>status</th><th>duration</th><th>when</th></tr>
+    </thead>
+    <tbody id="captures-tbody">
+      {% for c in captures %}
+      <tr style="cursor:pointer" onclick="window.location='/tunnels/{{ tunnel.id }}/captures/{{ c.id }}'">
+        <td><code>{{ c.method }}</code></td>
+        <td class="mono truncate" style="max-width:32rem">{{ c.path }}</td>
+        <td>{{ crate::templates::opt_status(c.status) }}</td>
+        <td class="muted">{{ crate::templates::duration_short(c.duration_ms) }}</td>
+        <td class="muted" title="{{ crate::templates::format_time(c.started_at) }}">{{ crate::templates::time_ago(c.started_at) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+// Live tunnel-state updates. Flip the state pill + last-seen label when the
+// CLI connects or drops while we're viewing the detail page.
+(() => {
+  const tunnelId = "{{ tunnel.id }}";
+  const stateEl = document.getElementById('tunnel-state');
+  const lastSeenEl = document.getElementById('tunnel-last-seen');
+  const apply = (html) => {
+    if (stateEl) stateEl.innerHTML = html;
+    if (lastSeenEl) lastSeenEl.textContent = 'last seen just now';
+  };
+  const es = new EventSource('/events/tunnels');
+  es.addEventListener('active', e => {
+    const d = JSON.parse(e.data);
+    if (d.tunnel_id === tunnelId) apply('<span class="pill active"><span class="dot"></span>active</span>');
+  });
+  es.addEventListener('disconnected', e => {
+    const d = JSON.parse(e.data);
+    if (d.tunnel_id === tunnelId) apply('<span class="pill offline">disconnected</span>');
+  });
+})();
+
+// Live capture tail — new captures prepend, matching newest-first ordering.
+(() => {
+  const tbody = document.getElementById('captures-tbody');
+  const table = document.getElementById('captures-table');
+  const empty = document.getElementById('captures-empty');
+  const tunnelId = "{{ tunnel.id }}";
+  const durationShort = ms => ms == null ? '—' : (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(2)}s`);
+  const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const es = new EventSource(`/tunnels/${tunnelId}/events`);
+  const lastSeenEl = document.getElementById('tunnel-last-seen');
+  es.addEventListener('capture', e => {
+    const c = JSON.parse(e.data);
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.onclick = () => { window.location = `/tunnels/${tunnelId}/captures/${c.id}`; };
+    tr.innerHTML = `<td><code>${escape(c.method)}</code></td>
+                    <td class="mono truncate" style="max-width:32rem">${escape(c.path)}</td>
+                    <td>${c.status ?? '—'}</td>
+                    <td class="muted">${durationShort(c.duration_ms)}</td>
+                    <td class="muted">just now</td>`;
+    if (empty && !empty.hidden) empty.hidden = true;
+    if (table && table.hidden) table.hidden = false;
+    tbody.prepend(tr);
+    if (lastSeenEl) lastSeenEl.textContent = 'last seen just now';
+  });
+})();
+</script>
+{% endblock %}

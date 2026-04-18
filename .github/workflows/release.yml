@@ -1,0 +1,143 @@
+name: Release
+
+# Cut a release by pushing a `vX.Y.Z` tag. The workflow cross-compiles the
+# `relay` CLI, attaches the binary to a GitHub Release, and auto-bumps
+# `Formula/relay.rb` in main so `brew upgrade relay` pulls the new version.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # v1: Apple Silicon only. Add more lines when there's demand;
+          # each additional target costs a runner-minute and a formula
+          # `on_*` stanza below.
+          - target: aarch64-apple-darwin
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} --bin relay
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          NAME="relay-${{ github.ref_name }}-${{ matrix.target }}"
+          cp target/${{ matrix.target }}/release/relay dist/relay
+          cp README.md LICENSE dist/
+          cd dist
+          tar czf "${NAME}.tar.gz" relay README.md LICENSE
+          shasum -a 256 "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+  bump-formula:
+    name: bump homebrew formula on main
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Regenerate Formula/relay.rb
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"            # e.g. v0.2.0
+          PLAIN_VERSION="${VERSION#v}"                 # e.g. 0.2.0
+          BASE="https://github.com/${{ github.repository }}/releases/download/${VERSION}"
+
+          SHA_ARM64="$(awk '{print $1}' "dist/relay-${VERSION}-aarch64-apple-darwin.tar.gz.sha256")"
+
+          cat > Formula/relay.rb <<RUBY
+          class Relay < Formula
+            desc "Self-hostable tunneling — open public URLs for local services over QUIC"
+            homepage "https://withrelay.dev"
+            version "${PLAIN_VERSION}"
+            license "MIT"
+
+            depends_on arch: :arm64
+            depends_on :macos
+
+            url "${BASE}/relay-${VERSION}-aarch64-apple-darwin.tar.gz"
+            sha256 "${SHA_ARM64}"
+
+            def install
+              bin.install "relay"
+            end
+
+            test do
+              assert_match "relay", shell_output("#{bin}/relay --version")
+            end
+          end
+          RUBY
+
+      - name: Commit + push
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet Formula/relay.rb; then
+            echo "formula already up to date"
+            exit 0
+          fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git add Formula/relay.rb
+          git commit -m "chore: bump homebrew formula to ${{ github.ref_name }}"
+          git push origin HEAD:main

@@ -1,0 +1,40 @@
+# Copy to terraform.tfvars (which is .gitignored) and fill in.
+
+# ---- provider tokens ----
+do_token             = "dop_v1_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+cloudflare_api_token = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# ---- droplet ----
+# doctl compute ssh-key list
+ssh_key_ids   = [12345678]
+region        = "nyc3"
+droplet_size  = "s-1vcpu-2gb"
+# Tighten to your office IP or VPN in prod.
+# ssh_allow_from = ["203.0.113.7/32"]
+
+# ---- domains ----
+tunnel_base_domain = "sharedwithrelay.com"
+tunnel_zone_id     = "cloudflare-zone-id-for-sharedwithrelay-com"
+admin_hostname     = "dash.withrelay.dev"
+admin_zone_id      = "cloudflare-zone-id-for-withrelay-dev"
+
+# ---- relay config ----
+github_oauth_client_id     = "Iv1.abcdef..."
+github_oauth_client_secret = "secret-from-github-oauth-app"
+acme_contact_email         = "you@example.com"
+
+# Leave empty to allow any GitHub user; list one or more GitHub orgs to
+# restrict sign-in to their members. Case-insensitive. For a company
+# deploy, set to ["mycompany"].
+# github_allowed_orgs = []
+
+# Start on staging; flip to the prod URL once a staging cert issues cleanly.
+# acme_directory = "https://acme-v02.api.letsencrypt.org/directory"
+
+# Leave blank to let Terraform generate a random 32-byte key. Set a fixed
+# value only when migrating a cert store between droplets.
+# relay_data_key = ""
+
+# Point at your fork if you've customised anything.
+# relay_git_url = "https://github.com/afomera/relay.git"
+# relay_git_ref = "main"

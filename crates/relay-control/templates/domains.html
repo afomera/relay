@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}custom domains · relay{% endblock %}
+{% block body %}
+<header class="page-header">
+  <h1>custom domains</h1>
+  <p class="sub">Point your own domain at the relay apex. Verify via TXT, then we issue a certificate.</p>
+</header>
+
+{% if let Some((host, err)) = verify_error %}
+<div class="card" style="border-color: var(--atlas-status-error); background: color-mix(in srgb, var(--atlas-status-error) 8%, var(--atlas-surface-1))">
+  <p><strong>Verification failed for <code>{{ host }}</code>:</strong> {{ err }}</p>
+  <p class="muted small">DNS propagation can take a minute or two — try again shortly.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/domains" class="inline">
+    <input type="text" name="hostname" placeholder="tunnel.mycompany.com" required>
+    <button type="submit">{{ crate::icons::icon("plus")|safe }} add domain</button>
+  </form>
+</div>
+
+<div class="card">
+  {% if domains.is_empty() %}
+  <p class="muted">No custom domains yet.</p>
+  {% else %}
+  <table>
+    <thead><tr><th>hostname</th><th>status</th><th>dns records</th><th></th></tr></thead>
+    <tbody>
+      {% for d in domains %}
+      <tr>
+        <td class="mono">{{ d.hostname }}</td>
+        <td>
+          {% if d.verified_at.is_some() %}<span class="pill active"><span class="dot"></span>verified</span>
+          {% else %}<span class="pill warning">pending</span>{% endif %}
+        </td>
+        <td class="mono small secondary">
+          <div>CNAME {{ d.hostname }} → {{ apex_target }}</div>
+          <div>TXT _relay-challenge.{{ d.hostname }} "{{ d.verification_token }}"</div>
+        </td>
+        <td class="actions">
+          <div class="row">
+            {% if d.verified_at.is_none() %}
+            <form method="post" action="/domains/{{ d.id }}/verify" style="display:inline">
+              <button type="submit">verify</button>
+            </form>
+            {% endif %}
+            <form method="post" action="/domains/{{ d.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Remove {{ d.hostname }}?');">
+              <button class="icon-btn danger" type="submit" title="remove">{{ crate::icons::icon("trash")|safe }}</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

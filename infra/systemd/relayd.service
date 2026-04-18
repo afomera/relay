@@ -1,0 +1,32 @@
+[Unit]
+Description=relay tunnel server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+WorkingDirectory=/var/lib/relay
+ExecStart=/usr/local/bin/relayd --config /etc/relay/relayd.toml
+EnvironmentFile=/etc/relay/relayd.env
+Restart=on-failure
+RestartSec=2s
+LimitNOFILE=65536
+
+# Lock down the process.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/relay
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Bind to low ports as non-root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

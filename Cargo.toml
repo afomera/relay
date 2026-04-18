@@ -1,0 +1,85 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/relay-proto",
+    "crates/relay-db",
+    "crates/relay-dns",
+    "crates/relay-acme",
+    "crates/relay-edge",
+    "crates/relay-control",
+    "crates/relay-cli",
+    "crates/relay-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+repository = "https://github.com/afomera/relay"
+
+[workspace.dependencies]
+# async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# error handling
+anyhow = "1"
+thiserror = "1"
+
+# serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ciborium = "0.2"
+
+# logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ids, time
+uuid = { version = "1", features = ["v4", "serde"] }
+time = { version = "0.3", features = ["serde", "macros"] }
+
+# http / web
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "fs", "cors"] }
+askama = "0.12"
+askama_axum = "0.4"
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+bytes = "1"
+dashmap = "6"
+tokio-util = { version = "0.7", features = ["io", "codec"] }
+tokio-stream = "0.1"
+parking_lot = "0.12"
+
+# quic / tls
+quinn = "0.11"
+rustls = "0.23"
+rustls-pemfile = "2"
+rcgen = "0.13"
+
+# database
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "postgres", "uuid", "time", "macros", "migrate"] }
+
+# cli
+clap = { version = "4", features = ["derive", "env"] }
+
+# misc
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+argon2 = "0.5"
+rand = "0.8"
+base64 = "0.22"
+toml = "0.8"
+directories = "5"
+instant-acme = "0.8"
+axum-extra = { version = "0.9", features = ["cookie", "cookie-private"] }
+sha2 = "0.10"
+hmac = "0.12"
+urlencoding = "2"
+aes-gcm-siv = "0.11"
+hickory-resolver = "0.24"

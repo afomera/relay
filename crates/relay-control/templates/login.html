@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>sign in · relay</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="/_static/app.css">
+</head>
+<body class="auth-screen">
+<div class="auth-card">
+  <h1>{{ crate::icons::icon("zap")|safe }} relay</h1>
+  <p class="sub">Self-hostable tunneling. Sign in to manage tunnels, reservations, and API tokens.</p>
+  <div class="stack">
+  {% if github_enabled %}
+    <a class="btn ghost" href="/auth/github/login">
+      {{ crate::icons::icon("github")|safe }} sign in with github
+    </a>
+  {% endif %}
+  {% if dev_enabled %}
+    <a class="btn" href="/auth/dev/login">
+      {{ crate::icons::icon("terminal")|safe }} sign in as dev user
+    </a>
+    <p class="note">Dev mode is on — anyone hitting this page can sign in. Don't expose this binding to the public internet.</p>
+  {% endif %}
+  {% if !github_enabled && !dev_enabled %}
+    <p class="note"><strong>No login methods are configured on this server.</strong><br>
+    Set <code>github_oauth.client_id</code> in <code>relayd.toml</code>, or pass <code>--dev</code> on the command line.</p>
+  {% endif %}
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}relay{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="/_static/app.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="/">
+      {{ crate::icons::icon("zap")|safe }} relay
+    </a>
+    <nav>
+      <a href="/" class="{% if nav == "tunnels" %}active{% endif %}">
+        {{ crate::icons::icon("home")|safe }} tunnels
+      </a>
+      <a href="/reservations" class="{% if nav == "reservations" %}active{% endif %}">
+        {{ crate::icons::icon("bookmark")|safe }} reservations
+      </a>
+      <a href="/domains" class="{% if nav == "domains" %}active{% endif %}">
+        {{ crate::icons::icon("globe")|safe }} domains
+      </a>
+      <a href="/tokens" class="{% if nav == "tokens" %}active{% endif %}">
+        {{ crate::icons::icon("key")|safe }} tokens
+      </a>
+    </nav>
+    <div class="footer">
+      {% block footer %}
+      <span><strong>{{ ctx.user_login }}</strong></span>
+      <span>workspace · {{ ctx.org_name }}</span>
+      <a href="/auth/logout" class="row">{{ crate::icons::icon("log-out")|safe }} sign out</a>
+      {% endblock %}
+    </div>
+  </aside>
+  <main>
+    {% block body %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

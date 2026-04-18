@@ -1,0 +1,44 @@
+[package]
+name = "relay-control"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Control plane: HTTP API + server-rendered dashboard (axum + Askama + HTMX)."
+
+[dependencies]
+tokio.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+askama.workspace = true
+askama_axum.workspace = true
+http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+time.workspace = true
+argon2.workspace = true
+rand.workspace = true
+base64.workspace = true
+urlencoding.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+async-stream = "0.3"
+sqlx.workspace = true
+hickory-resolver.workspace = true
+relay-db = { path = "../relay-db" }
+relay-edge = { path = "../relay-edge" }
+relay-proto = { path = "../relay-proto" }
+relay-acme = { path = "../relay-acme" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }

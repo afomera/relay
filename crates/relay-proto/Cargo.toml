@@ -1,0 +1,19 @@
+[package]
+name = "relay-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Wire protocol types shared between the relay CLI and relayd server."
+
+[dependencies]
+serde.workspace = true
+ciborium.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["io-util"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "io-util"] }

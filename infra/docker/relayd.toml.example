@@ -1,0 +1,49 @@
+# Example relayd.toml — copy to relayd.toml and edit.
+
+[server]
+bind_http  = "0.0.0.0:80"
+bind_https = "0.0.0.0:443"
+bind_quic  = "0.0.0.0:443"        # UDP — QUIC shares :443 with HTTPS
+bind_admin = "127.0.0.1:7090"     # loopback fallback (ssh tunnel access)
+# When set, the dashboard is also served on this hostname via the edge's
+# :80/:443 listeners — no reverse proxy needed. Cert is auto-issued via
+# HTTP-01. Leave unset for headless / dashboard-only-on-loopback deploys.
+admin_hostname = "dash.withrelay.dev"
+public_url = "https://dash.withrelay.dev"
+tunnel_scheme = "https"
+
+[domains]
+base      = "sharedwithrelay.com"
+temporary = "temporary.sharedwithrelay.com"
+
+[db]
+# For production, use Postgres (once D21 lands). Until then, SQLite:
+url = "sqlite:///var/lib/relay/relay.db"
+# url = "postgres://relay:REPLACE@postgres:5432/relay"
+
+[github_oauth]
+client_id         = "Iv1.abcdef..."
+client_secret_env = "GITHUB_OAUTH_SECRET"
+# Uncomment to restrict sign-in to members of specific GitHub orgs. Case
+# insensitive. Leave empty/unset to allow any GitHub user.
+# allowed_orgs = ["mycompany"]
+
+[security]
+# 32 random bytes, base64. Generate with:
+#   head -c 32 /dev/urandom | base64
+data_key_env = "RELAY_DATA_KEY"
+
+[dns]
+provider = "cloudflare"
+
+[dns.cloudflare]
+api_token_env = "CLOUDFLARE_API_TOKEN"
+zone_id       = "YOUR_CLOUDFLARE_ZONE_ID"
+
+[acme]
+# Default is Let's Encrypt *staging*. Once you've verified first-boot issuance
+# end-to-end, flip this to https://acme-v02.api.letsencrypt.org/directory for
+# production-trusted certs. Staging certs are rate-limit friendly but not
+# trusted by browsers.
+directory     = "https://acme-staging-v02.api.letsencrypt.org/directory"
+contact_email = "you@example.com"

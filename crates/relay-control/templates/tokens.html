@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}api tokens · relay{% endblock %}
+{% block body %}
+<header class="page-header">
+  <h1>api tokens</h1>
+  <p class="sub">Use these tokens with <code>relay auth login --token &lt;token&gt;</code>.</p>
+</header>
+
+{% if let Some(plain) = fresh_token %}
+<div class="token">
+  <strong>Copy this now — it won't be shown again.</strong><br>
+  <span class="mono">{{ plain }}</span>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/tokens" class="inline">
+    <input type="text" name="name" placeholder="token name (e.g. laptop)" required>
+    <button type="submit">{{ crate::icons::icon("plus")|safe }} create token</button>
+  </form>
+</div>
+
+<div class="card">
+  {% if tokens.is_empty() %}
+  <p class="muted">No tokens yet.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr><th>name</th><th>scopes</th><th>last used</th><th>created</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in tokens %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td class="mono secondary">{{ t.scopes }}</td>
+        <td class="muted" title="{{ crate::templates::opt_time(t.last_used_at) }}">{{ crate::templates::opt_time_ago(t.last_used_at) }}</td>
+        <td class="muted" title="{{ crate::templates::format_time(t.created_at) }}">{{ crate::templates::time_ago(t.created_at) }}</td>
+        <td class="actions">
+          <form method="post" action="/tokens/{{ t.id }}/delete" style="display:inline"
+                onsubmit="return confirm('Revoke this token?');">
+            <button class="icon-btn danger" type="submit" title="revoke">{{ crate::icons::icon("trash")|safe }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

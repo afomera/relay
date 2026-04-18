@@ -1,0 +1,45 @@
+# docker-compose for relay self-hosting.
+#
+# Prereqs:
+#   - A base domain you control (set `RELAY_BASE` below).
+#   - A Cloudflare API token with Zone:DNS:Edit on that zone.
+#   - Zone id for the base domain.
+#
+# Start: `docker compose up -d`
+
+version: "3.9"
+
+services:
+  relayd:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      RUST_LOG: info
+      RELAY_DATA_KEY: ${RELAY_DATA_KEY}
+      GITHUB_OAUTH_SECRET: ${GITHUB_OAUTH_SECRET}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+    volumes:
+      - ./relayd.toml:/etc/relay/relayd.toml:ro
+      - relay-data:/var/lib/relay
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: relay
+    volumes:
+      - relay-pg:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  relay-data:
+  relay-pg:

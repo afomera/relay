@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}tunnels · relay{% endblock %}
+{% block body %}
+<header class="page-header space-between" style="align-items:flex-end">
+  <div>
+    <h1>tunnels</h1>
+    <p class="sub">Live tunnels in this workspace. Click a row for request inspection.</p>
+  </div>
+  {% if has_disconnected %}
+  <form method="post" action="/tunnels/delete-disconnected"
+        onsubmit="return confirm('Delete every disconnected tunnel and its captured requests?');">
+    <button type="submit" class="ghost">{{ crate::icons::icon("trash")|safe }} clear disconnected</button>
+  </form>
+  {% endif %}
+</header>
+
+<div class="card">
+  <p id="tunnels-empty" class="muted" {% if !tunnels.is_empty() %}hidden{% endif %}>
+    No tunnels yet. Try <code>relay http 3000</code>. Your workspace's tunnels appear here the moment the CLI connects.
+  </p>
+  <table id="tunnels-table" {% if tunnels.is_empty() %}hidden{% endif %}>
+    <thead>
+      <tr>
+        <th>public url</th><th>kind</th><th>state</th><th>last seen</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="tunnels-tbody"
+           data-scheme="{{ tunnel_scheme }}"
+           data-port="{{ tunnel_public_port_str }}">
+      {% for t in tunnels %}
+      {% let url = crate::templates::render_public_url(tunnel_scheme, tunnel_public_port, t.hostname) %}
+      <tr id="tunnel-{{ t.id }}" data-state="{{ t.state }}">
+        <td class="mono">
+          <a href="{{ url }}" target="_blank" rel="noopener noreferrer" class="row">
+            <span class="truncate" style="max-width:28rem">{{ url }}</span>
+            {{ crate::icons::icon("external-link")|safe }}
+          </a>
+        </td>
+        <td class="secondary">{{ t.kind }}</td>
+        <td class="state-cell">
+          {% if t.state == "active" %}<span class="pill active"><span class="dot"></span>active</span>
+          {% else %}<span class="pill offline">{{ t.state }}</span>{% endif %}
+        </td>
+        <td class="muted last-seen" title="{{ crate::templates::format_time(t.last_seen_at) }}">{{ crate::templates::time_ago(t.last_seen_at) }}</td>
+        <td class="actions">
+          <div class="row">
+            <a class="icon-btn" href="/tunnels/{{ t.id }}" title="inspect">{{ crate::icons::icon("search")|safe }}</a>
+            {% if t.state != "active" %}
+            <form method="post" action="/tunnels/{{ t.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Delete this tunnel and its captured requests?');">
+              <button class="icon-btn danger" type="submit" title="delete">{{ crate::icons::icon("trash")|safe }}</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="muted small">Base domain · <code>{{ base_domain }}</code></p>
+
+<script>
+// Live tunnel updates via SSE.
+//   * Known rows: state pill + last-seen cell are replaced in place.
+//   * Unknown active tunnels: row is prepended (active-first sort order).
+(() => {
+  const table = document.getElementById('tunnels-table');
+  const tbody = document.getElementById('tunnels-tbody');
+  const empty = document.getElementById('tunnels-empty');
+  if (!tbody) return;
+
+  const scheme = tbody.dataset.scheme || 'http';
+  const rawPort = tbody.dataset.port || '';
+  const port = rawPort ? parseInt(rawPort, 10) : null;
+
+  const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const publicUrl = (hostname) => {
+    if (hostname.includes('://')) return hostname;
+    return port ? `${scheme}://${hostname}:${port}` : `${scheme}://${hostname}`;
+  };
+
+  const ICON_EXT = `{{ crate::icons::icon("external-link")|safe|escape("none") }}`.replace(/\n/g, '');
+  const ICON_SEARCH = `{{ crate::icons::icon("search")|safe|escape("none") }}`.replace(/\n/g, '');
+
+  const showList = () => {
+    if (empty) empty.hidden = true;
+    if (table) table.hidden = false;
+  };
+
+  const renderRow = (d) => {
+    const url = publicUrl(d.hostname);
+    const tr = document.createElement('tr');
+    tr.id = 'tunnel-' + d.tunnel_id;
+    tr.dataset.state = 'active';
+    tr.innerHTML =
+      `<td class="mono">` +
+      `  <a href="${escape(url)}" target="_blank" rel="noopener noreferrer" class="row">` +
+      `    <span class="truncate" style="max-width:28rem">${escape(url)}</span>` +
+      `    ${ICON_EXT}` +
+      `  </a>` +
+      `</td>` +
+      `<td class="secondary">${escape(d.kind)}</td>` +
+      `<td class="state-cell"><span class="pill active"><span class="dot"></span>active</span></td>` +
+      `<td class="muted last-seen">just now</td>` +
+      `<td class="actions"><div class="row">` +
+      `  <a class="icon-btn" href="/tunnels/${encodeURIComponent(d.tunnel_id)}" title="inspect">${ICON_SEARCH}</a>` +
+      `</div></td>`;
+    return tr;
+  };
+
+  const applyActive = (d) => {
+    const existing = document.getElementById('tunnel-' + d.tunnel_id);
+    if (existing) {
+      existing.dataset.state = 'active';
+      const cell = existing.querySelector('.state-cell');
+      if (cell) cell.innerHTML = '<span class="pill active"><span class="dot"></span>active</span>';
+      const ls = existing.querySelector('.last-seen');
+      if (ls) ls.textContent = 'just now';
+      return;
+    }
+    tbody.prepend(renderRow(d));
+    showList();
+  };
+
+  const applyDisconnected = (d) => {
+    const existing = document.getElementById('tunnel-' + d.tunnel_id);
+    if (!existing) return;
+    existing.dataset.state = 'disconnected';
+    const cell = existing.querySelector('.state-cell');
+    if (cell) cell.innerHTML = '<span class="pill offline">disconnected</span>';
+    const ls = existing.querySelector('.last-seen');
+    if (ls) ls.textContent = 'just now';
+  };
+
+  const applyTouched = (d) => {
+    const existing = document.getElementById('tunnel-' + d.tunnel_id);
+    if (!existing) return;
+    const ls = existing.querySelector('.last-seen');
+    if (ls) ls.textContent = 'just now';
+  };
+
+  const es = new EventSource('/events/tunnels');
+  es.addEventListener('active', e => applyActive(JSON.parse(e.data)));
+  es.addEventListener('disconnected', e => applyDisconnected(JSON.parse(e.data)));
+  es.addEventListener('touched', e => applyTouched(JSON.parse(e.data)));
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+# build artifacts
+/target
+**/*.rs.bk
+*.pdb
+
+# local dev database
+/relay.db
+/relay.db-*
+/relay-dev.db
+/relay-dev.db-*
+*.sqlite
+*.sqlite-journal
+
+# secrets + local config — match at any depth, not just root
+**/.env
+**/.env.local
+**/.env.*.local
+**/config.local.toml
+
+# terraform state + user-supplied vars. Keep .terraform.lock.hcl committed
+# for reproducible provider versions (standard Terraform practice).
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/terraform.tfstate.backup
+**/*.auto.tfvars
+**/terraform.tfvars
+**/crash.log
+**/crash.*.log
+
+# editors + LSPs
+.vscode/
+.idea/
+.ruby-lsp/
+.zed/
+*.swp
+.DS_Store
+
+# node, if anyone adds a tailwind build step later
+node_modules/
+package-lock.json
+
+# release backups dropped by `make backup`
+/relay-backup-*.db

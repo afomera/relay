@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ capture.method }} {{ capture.path }} · relay{% endblock %}
+{% block head %}
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github.min.css"
+      media="(prefers-color-scheme: light)">
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark.min.css"
+      media="(prefers-color-scheme: dark)">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+{% endblock %}
+{% block body %}
+<header class="page-header">
+  <a href="/tunnels/{{ tunnel.id }}" class="row muted small">{{ crate::icons::icon("arrow-left")|safe }} {{ tunnel.hostname }}</a>
+  <h1 style="margin-top:0.5rem"><code>{{ capture.method }}</code> <span class="mono">{{ capture.path }}</span></h1>
+  <div class="sub row" style="gap:0.75rem;flex-wrap:wrap">
+    <span>status <strong class="secondary">{{ crate::templates::opt_status(capture.status) }}</strong></span>
+    <span>{{ crate::templates::duration_short(capture.duration_ms) }}</span>
+    <span title="{{ crate::templates::format_time(capture.started_at) }}">{{ crate::templates::time_ago(capture.started_at) }}</span>
+    {% if capture.truncated == 1 %}<span class="pill warning">body truncated</span>{% endif %}
+  </div>
+</header>
+
+<div class="card">
+  <h2>request headers</h2>
+  <pre class="header-block">{% for (k, v) in req_headers %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+</div>
+
+<div class="card">
+  <h2>request body</h2>
+  {% match req_body %}
+    {% when crate::templates::RenderedBody::Empty %}
+      <p class="muted">empty</p>
+    {% when crate::templates::RenderedBody::Text { text, language } %}
+      <pre class="body-block"><code class="language-{{ language }}">{{ text }}</code></pre>
+    {% when crate::templates::RenderedBody::Binary { bytes } %}
+      <p class="muted">binary, {{ bytes }} bytes (preview not shown)</p>
+  {% endmatch %}
+</div>
+
+<div class="card">
+  <h2>response headers</h2>
+  <pre class="header-block">{% for (k, v) in resp_headers %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+</div>
+
+<div class="card">
+  <h2>response body</h2>
+  {% match resp_body %}
+    {% when crate::templates::RenderedBody::Empty %}
+      <p class="muted">empty</p>
+    {% when crate::templates::RenderedBody::Text { text, language } %}
+      <pre class="body-block"><code class="language-{{ language }}">{{ text }}</code></pre>
+    {% when crate::templates::RenderedBody::Binary { bytes } %}
+      <p class="muted">binary, {{ bytes }} bytes (preview not shown)</p>
+  {% endmatch %}
+</div>
+
+<script>hljs.highlightAll();</script>
+{% endblock %}

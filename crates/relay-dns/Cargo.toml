@@ -1,0 +1,17 @@
+[package]
+name = "relay-dns"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Pluggable DNS provider trait — Cloudflare, Route53, RFC2136."
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+urlencoding.workspace = true

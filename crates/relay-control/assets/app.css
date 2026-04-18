@@ -1,0 +1,367 @@
+/* relay dashboard — atlas-inspired, IBM Plex Mono, no build step.
+   Token names mirror the @theme block in your Atlas apps so a future
+   Tailwind-4 build can drop in without touching the templates. */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
+
+:root {
+  color-scheme: light dark;
+  /* atlas dark defaults — accent is amber-500 for a warm, terminal-y vibe */
+  --atlas-surface-0: #0c0c0c;
+  --atlas-surface-1: #161616;
+  --atlas-surface-2: #222222;
+  --atlas-surface-3: #2e2e2e;
+  --atlas-border: #333333;
+  --atlas-border-subtle: #282828;
+  --atlas-text-primary: #ebebeb;
+  --atlas-text-secondary: #a8a8a8;
+  --atlas-text-tertiary: #808080;
+  --atlas-text-muted: #636363;
+  --atlas-accent: #f59e0b;
+  --atlas-status-active: #4ade80;
+  --atlas-status-error: #f87171;
+  --atlas-status-warning: #fbbf24;
+  --atlas-status-info: #60a5fa;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --atlas-surface-0: #fafafa;
+    --atlas-surface-1: #ffffff;
+    --atlas-surface-2: #f3f3f3;
+    --atlas-surface-3: #e5e5e5;
+    --atlas-border: #d4d4d4;
+    --atlas-border-subtle: #e5e5e5;
+    --atlas-text-primary: #111111;
+    --atlas-text-secondary: #525252;
+    --atlas-text-tertiary: #737373;
+    --atlas-text-muted: #a3a3a3;
+    --atlas-accent: #b45309;
+    --atlas-status-active: #16a34a;
+    --atlas-status-error: #dc2626;
+    --atlas-status-warning: #d97706;
+    --atlas-status-info: #2563eb;
+  }
+}
+
+/* reset + base */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--atlas-surface-0);
+  color: var(--atlas-text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+a { color: var(--atlas-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { margin: 0; font-weight: 500; }
+p { margin: 0; }
+
+code {
+  font-family: inherit;
+  background: var(--atlas-surface-2);
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+/* Inline SVG (Lucide icons) default size. The SVG source has only viewBox —
+   without this rule the browser renders at 300×150. Context-specific rules
+   below override for the brand logo (larger) and icon buttons (smaller). */
+svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--atlas-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--atlas-text-tertiary); }
+
+::selection {
+  background: var(--atlas-text-tertiary);
+  color: var(--atlas-text-primary);
+}
+
+th, nav a, .label { text-transform: lowercase; }
+[data-lowercase] { text-transform: lowercase; }
+
+/* layout */
+
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--atlas-surface-1);
+  border-right: 1px solid var(--atlas-border-subtle);
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 0.75rem;
+}
+.sidebar .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 0.75rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--atlas-text-primary);
+  border-bottom: 1px solid var(--atlas-border-subtle);
+  margin-bottom: 1rem;
+}
+.sidebar .brand svg { color: var(--atlas-accent); width: 20px; height: 20px; }
+.sidebar .brand:hover { text-decoration: none; }
+
+.sidebar nav { display: flex; flex-direction: column; gap: 0.1rem; }
+.sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  color: var(--atlas-text-secondary);
+  font-size: 0.85rem;
+}
+.sidebar nav a:hover,
+.sidebar nav a.active {
+  background: var(--atlas-surface-2);
+  color: var(--atlas-text-primary);
+  text-decoration: none;
+}
+.sidebar nav a svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--atlas-text-tertiary); }
+.sidebar nav a.active svg { color: var(--atlas-accent); }
+
+.sidebar .footer {
+  margin-top: auto;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--atlas-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border-top: 1px solid var(--atlas-border-subtle);
+}
+.sidebar .footer strong { color: var(--atlas-text-secondary); font-weight: 500; }
+.sidebar .footer a { color: var(--atlas-text-tertiary); }
+
+main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem 2.5rem 3rem;
+}
+main > .page-header { margin-bottom: 1.5rem; }
+main > .page-header h1 { font-size: 1.1rem; }
+main > .page-header .sub { color: var(--atlas-text-tertiary); font-size: 0.8rem; margin-top: 0.2rem; }
+
+/* card + table */
+
+.card {
+  background: var(--atlas-surface-1);
+  border: 1px solid var(--atlas-border-subtle);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.card > h2 {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--atlas-text-secondary);
+  letter-spacing: 0.02em;
+  margin-bottom: 0.75rem;
+  text-transform: lowercase;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--atlas-text-muted);
+  border-bottom: 1px solid var(--atlas-border-subtle);
+  letter-spacing: 0.04em;
+}
+td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--atlas-border-subtle);
+  font-size: 0.85rem;
+}
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--atlas-surface-2); }
+
+td.actions { width: 1%; white-space: nowrap; text-align: right; }
+td.actions .row { display: inline-flex; gap: 0.15rem; }
+
+/* pills */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  background: var(--atlas-surface-3);
+  color: var(--atlas-text-secondary);
+  text-transform: lowercase;
+}
+.pill .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pill.active { background: color-mix(in srgb, var(--atlas-status-active) 18%, transparent); color: var(--atlas-status-active); }
+.pill.offline { background: color-mix(in srgb, var(--atlas-status-error) 18%, transparent); color: var(--atlas-status-error); }
+.pill.warning { background: color-mix(in srgb, var(--atlas-status-warning) 18%, transparent); color: var(--atlas-status-warning); }
+
+/* buttons */
+
+.btn, button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--atlas-accent);
+  color: white;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  text-transform: lowercase;
+}
+.btn:hover, button:hover { filter: brightness(1.08); text-decoration: none; }
+.btn.ghost, button.ghost {
+  background: transparent;
+  color: var(--atlas-text-primary);
+  border: 1px solid var(--atlas-border);
+}
+.btn.ghost:hover, button.ghost:hover { background: var(--atlas-surface-2); }
+
+input[type=text] {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--atlas-border);
+  border-radius: 6px;
+  background: var(--atlas-surface-0);
+  color: var(--atlas-text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  min-width: 14rem;
+}
+input[type=text]:focus {
+  outline: 2px solid var(--atlas-accent);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+form.inline { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
+
+/* icon buttons */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0.35rem;
+  border-radius: 5px;
+  color: var(--atlas-text-tertiary);
+  cursor: pointer;
+  font-family: inherit;
+}
+.icon-btn:hover {
+  background: var(--atlas-surface-2);
+  color: var(--atlas-text-primary);
+}
+.icon-btn.danger:hover { color: var(--atlas-status-error); }
+.icon-btn svg { width: 16px; height: 16px; display: block; }
+
+/* inspector */
+
+pre.header-block {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--atlas-surface-2);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--atlas-text-primary);
+}
+pre.body-block {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--atlas-surface-2);
+  padding: 0;
+  margin: 0;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  max-height: 70vh;
+  overflow: auto;
+}
+pre.body-block code {
+  padding: 0.75rem 1rem;
+  display: block;
+  background: transparent !important;
+}
+
+/* token reveal */
+
+.token {
+  background: color-mix(in srgb, var(--atlas-status-warning) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--atlas-status-warning) 40%, transparent);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+.token strong { color: var(--atlas-status-warning); }
+
+/* login layout */
+
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--atlas-surface-0);
+}
+.auth-card {
+  width: 100%;
+  max-width: 26rem;
+  background: var(--atlas-surface-1);
+  border: 1px solid var(--atlas-border-subtle);
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+}
+.auth-card h1 {
+  color: var(--atlas-accent);
+  margin-bottom: 0.5rem;
+  font-size: 1.3rem;
+}
+.auth-card .sub { color: var(--atlas-text-tertiary); font-size: 0.85rem; margin-bottom: 1.5rem; }
+.auth-card .stack { display: flex; flex-direction: column; gap: 0.5rem; }
+.auth-card .btn { width: 100%; justify-content: center; }
+.auth-card .note { color: var(--atlas-text-muted); font-size: 0.78rem; margin-top: 1rem; }
+
+/* utility */
+
+.muted { color: var(--atlas-text-muted); }
+.secondary { color: var(--atlas-text-secondary); }
+.mono { font-family: inherit; }
+.row { display: flex; align-items: center; gap: 0.5rem; }
+.stack-4 > * + * { margin-top: 1rem; }
+.space-between { display: flex; justify-content: space-between; align-items: center; }
+.grow { flex: 1; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
