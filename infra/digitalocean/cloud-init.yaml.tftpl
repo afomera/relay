@@ -34,6 +34,9 @@ write_files:
 
 runcmd:
   - |
+    #!/usr/bin/env bash
+    # Cloud-init invokes runcmd scripts via /bin/sh by default; a shebang
+    # makes cloud-init run this block under bash so -o pipefail is valid.
     set -euxo pipefail
 
     # --- SSH: copy root's authorized_keys over to the relay user.
