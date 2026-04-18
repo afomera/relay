@@ -80,7 +80,13 @@ pub async fn issue_wildcard(
 
     let mut order = account.new_order(&NewOrder::new(&idents)).await?;
 
-    // Publish DNS-01 challenges for each authorization.
+    // Publish DNS-01 challenges for each authorization in two phases:
+    // upsert every TXT first, give Cloudflare's edge a moment to settle,
+    // THEN mark each challenge ready. If we mark ready in the same loop
+    // as upsert, ACME's validators race the DNS write and the order
+    // flips to Invalid before the record is visible. ChallengeHandle
+    // borrows from Order, so we can't stash handles across the sleep —
+    // instead we re-iterate authorizations for the set_ready pass.
     let mut published: Vec<(String, String)> = Vec::new();
     {
         let mut authzs = order.authorizations();
@@ -89,7 +95,7 @@ pub async fn issue_wildcard(
             if !matches!(authz.status, AuthorizationStatus::Pending) {
                 continue;
             }
-            let Some(mut challenge) = authz.challenge(ChallengeType::Dns01) else {
+            let Some(challenge) = authz.challenge(ChallengeType::Dns01) else {
                 anyhow::bail!("ACME did not offer a dns-01 challenge");
             };
             let apex = match challenge.identifier().identifier {
@@ -101,6 +107,19 @@ pub async fn issue_wildcard(
             tracing::info!(%record, "publishing ACME challenge");
             dns.upsert_txt(&record, &dns_value).await?;
             published.push((record, dns_value));
+        }
+    }
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    {
+        let mut authzs = order.authorizations();
+        while let Some(result) = authzs.next().await {
+            let mut authz = result?;
+            if !matches!(authz.status, AuthorizationStatus::Pending) {
+                continue;
+            }
+            let Some(mut challenge) = authz.challenge(ChallengeType::Dns01) else {
+                anyhow::bail!("ACME did not offer a dns-01 challenge");
+            };
             challenge.set_ready().await?;
         }
     }
@@ -113,16 +132,19 @@ pub async fn issue_wildcard(
 
     // Build our own key + CSR so we own the private key.
     let kp = rcgen::KeyPair::generate()?;
-    let params = rcgen::CertificateParams::new(
-        idents
-            .iter()
-            .map(|i| {
-                let Identifier::Dns(n) = i else { unreachable!() };
-                // Wildcard form for the SAN.
-                format!("*.{n}")
-            })
-            .collect::<Vec<_>>(),
-    )?;
+    let sans: Vec<String> = idents
+        .iter()
+        .map(|i| {
+            let Identifier::Dns(n) = i else { unreachable!() };
+            format!("*.{n}")
+        })
+        .collect();
+    let mut params = rcgen::CertificateParams::new(sans.clone())?;
+    // rcgen's default Subject CN is "rcgen self signed cert"; Let's Encrypt
+    // treats the CSR's CN as an identifier and rejects that literal string.
+    // Pin it to a SAN value so the CN is a valid identified domain.
+    params.distinguished_name = rcgen::DistinguishedName::new();
+    params.distinguished_name.push(rcgen::DnType::CommonName, sans[0].clone());
     let csr = params.serialize_request(&kp)?;
     order.finalize_csr(csr.der()).await?;
 
@@ -204,7 +226,10 @@ pub async fn issue_http01(
     }
 
     let kp = rcgen::KeyPair::generate()?;
-    let params = rcgen::CertificateParams::new(vec![hostname.to_string()])?;
+    let mut params = rcgen::CertificateParams::new(vec![hostname.to_string()])?;
+    // See the DNS-01 path for why we clear rcgen's default CN.
+    params.distinguished_name = rcgen::DistinguishedName::new();
+    params.distinguished_name.push(rcgen::DnType::CommonName, hostname);
     let csr = params.serialize_request(&kp)?;
     if let Err(e) = order.finalize_csr(csr.der()).await {
         cleanup(pending);

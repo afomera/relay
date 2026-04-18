@@ -32,97 +32,102 @@ write_files:
       PasswordAuthentication no
       PermitRootLogin prohibit-password
 
+  # The bootstrap lives in its own file so runcmd can exec it and the kernel
+  # honors the shebang. Inlining under `runcmd: - |` runs it via `sh`, which
+  # ignores shebangs and chokes on `set -o pipefail`.
+  - path: /usr/local/sbin/relay-bootstrap
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+
+      # --- SSH: copy root's authorized_keys over to the relay user.
+      mkdir -p /home/relay/.ssh
+      if [ -f /root/.ssh/authorized_keys ]; then
+        cp /root/.ssh/authorized_keys /home/relay/.ssh/authorized_keys
+      fi
+      chown -R relay:relay /home/relay/.ssh
+      chmod 700 /home/relay/.ssh
+      [ -f /home/relay/.ssh/authorized_keys ] && chmod 600 /home/relay/.ssh/authorized_keys
+      systemctl restart ssh || systemctl restart sshd || true
+
+      # --- Swap: 2 GB. Cheap insurance on 1-2 GB droplets.
+      if [ ! -f /swapfile ]; then
+        fallocate -l 2G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      fi
+
+      # --- Docker (official repo so we get compose-v2).
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      chmod a+r /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+        > /etc/apt/sources.list.d/docker.list
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      usermod -aG docker relay
+      systemctl enable --now docker
+
+      # --- Clone relay.
+      sudo -u relay git clone --depth 1 --branch ${relay_git_ref} ${relay_git_url} /home/relay/relay
+
+      # --- Write relayd.toml. Heredoc is single-quoted so bash doesn't
+      # expand anything; values come from Terraform's templatefile() above.
+      cat > /home/relay/relay/infra/docker/relayd.toml <<'TOML_EOF'
+      [server]
+      bind_http      = "0.0.0.0:80"
+      bind_https     = "0.0.0.0:443"
+      bind_quic      = "0.0.0.0:443"
+      bind_admin     = "127.0.0.1:7090"
+      admin_hostname = "${admin_hostname}"
+      public_url     = "https://${admin_hostname}"
+      tunnel_scheme  = "https"
+
+      [domains]
+      base      = "${tunnel_base_domain}"
+      temporary = "temporary.${tunnel_base_domain}"
+
+      [db]
+      url = "sqlite:///var/lib/relay/relay.db"
+
+      [github_oauth]
+      client_id         = "${github_oauth_client_id}"
+      client_secret_env = "GITHUB_OAUTH_SECRET"
+      allowed_orgs      = ${github_allowed_orgs_toml}
+
+      [security]
+      data_key_env = "RELAY_DATA_KEY"
+
+      [dns]
+      provider = "cloudflare"
+
+      [dns.cloudflare]
+      api_token_env = "CLOUDFLARE_API_TOKEN"
+      zone_id       = "${tunnel_zone_id}"
+
+      [acme]
+      directory     = "${acme_directory}"
+      contact_email = "${acme_contact_email}"
+      TOML_EOF
+
+      # --- .env for docker-compose. Mode 0600.
+      cat > /home/relay/relay/infra/docker/.env <<'ENV_EOF'
+      RELAY_DATA_KEY=${data_key_b64}
+      GITHUB_OAUTH_SECRET=${github_oauth_client_secret}
+      CLOUDFLARE_API_TOKEN=${cloudflare_api_token}
+      POSTGRES_PASSWORD=unused-until-postgres-lands
+      ENV_EOF
+      chmod 600 /home/relay/relay/infra/docker/.env
+      chown -R relay:relay /home/relay/relay
+
+      # --- Start relay.
+      cd /home/relay/relay/infra/docker
+      docker compose up -d --build
+
 runcmd:
-  - |
-    #!/usr/bin/env bash
-    # Cloud-init invokes runcmd scripts via /bin/sh by default; a shebang
-    # makes cloud-init run this block under bash so -o pipefail is valid.
-    set -euxo pipefail
-
-    # --- SSH: copy root's authorized_keys over to the relay user.
-    mkdir -p /home/relay/.ssh
-    if [ -f /root/.ssh/authorized_keys ]; then
-      cp /root/.ssh/authorized_keys /home/relay/.ssh/authorized_keys
-    fi
-    chown -R relay:relay /home/relay/.ssh
-    chmod 700 /home/relay/.ssh
-    [ -f /home/relay/.ssh/authorized_keys ] && chmod 600 /home/relay/.ssh/authorized_keys
-    systemctl restart ssh || systemctl restart sshd || true
-
-    # --- Swap: 2 GB. Cheap insurance on 1-2 GB droplets.
-    if [ ! -f /swapfile ]; then
-      fallocate -l 2G /swapfile
-      chmod 600 /swapfile
-      mkswap /swapfile
-      swapon /swapfile
-      echo '/swapfile none swap sw 0 0' >> /etc/fstab
-    fi
-
-    # --- Docker (official repo so we get compose-v2).
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
-      > /etc/apt/sources.list.d/docker.list
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    usermod -aG docker relay
-    systemctl enable --now docker
-
-    # --- Clone relay.
-    sudo -u relay git clone --depth 1 --branch ${relay_git_ref} ${relay_git_url} /home/relay/relay
-
-    # --- Write relayd.toml. Heredoc is single-quoted so bash doesn't
-    # expand anything; values come from Terraform's templatefile() above.
-    cat > /home/relay/relay/infra/docker/relayd.toml <<'TOML_EOF'
-    [server]
-    bind_http      = "0.0.0.0:80"
-    bind_https     = "0.0.0.0:443"
-    bind_quic      = "0.0.0.0:443"
-    bind_admin     = "127.0.0.1:7090"
-    admin_hostname = "${admin_hostname}"
-    public_url     = "https://${admin_hostname}"
-    tunnel_scheme  = "https"
-
-    [domains]
-    base      = "${tunnel_base_domain}"
-    temporary = "temporary.${tunnel_base_domain}"
-
-    [db]
-    url = "sqlite:///var/lib/relay/relay.db"
-
-    [github_oauth]
-    client_id         = "${github_oauth_client_id}"
-    client_secret_env = "GITHUB_OAUTH_SECRET"
-    allowed_orgs      = ${github_allowed_orgs_toml}
-
-    [security]
-    data_key_env = "RELAY_DATA_KEY"
-
-    [dns]
-    provider = "cloudflare"
-
-    [dns.cloudflare]
-    api_token_env = "CLOUDFLARE_API_TOKEN"
-    zone_id       = "${tunnel_zone_id}"
-
-    [acme]
-    directory     = "${acme_directory}"
-    contact_email = "${acme_contact_email}"
-    TOML_EOF
-
-    # --- .env for docker-compose. Mode 0600.
-    cat > /home/relay/relay/infra/docker/.env <<'ENV_EOF'
-    RELAY_DATA_KEY=${data_key_b64}
-    GITHUB_OAUTH_SECRET=${github_oauth_client_secret}
-    CLOUDFLARE_API_TOKEN=${cloudflare_api_token}
-    POSTGRES_PASSWORD=unused-until-postgres-lands
-    ENV_EOF
-    chmod 600 /home/relay/relay/infra/docker/.env
-    chown -R relay:relay /home/relay/relay
-
-    # --- Start relay.
-    cd /home/relay/relay/infra/docker
-    docker compose up -d --build
+  - /usr/local/sbin/relay-bootstrap
 
 final_message: "relay bootstrapped. Tail: docker compose -f /home/relay/relay/infra/docker/docker-compose.yml logs -f"
