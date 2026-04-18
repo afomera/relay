@@ -1,10 +1,17 @@
 name: Release
 
-# Cut a release by pushing a `vX.Y.Z` tag (normal path) or by manually
-# dispatching this workflow with an existing tag name (useful for retrying
-# a failed release or ad-hoc rebuilds). Either way the workflow builds the
-# `relay` CLI, attaches the binary to a GitHub Release, and auto-bumps
-# `Formula/relay.rb` on main so `brew upgrade relay` picks it up.
+# Two ways to cut a release:
+#
+#  1. Tag push — `git tag v0.1.0 && git push origin v0.1.0` (wrapped by
+#     `make release VERSION=0.1.0` locally). Workflow picks up the tag
+#     automatically.
+#
+#  2. Manual dispatch — Actions → Release → Run workflow, enter `0.1.0`
+#     (or `v0.1.0`). Workflow verifies Cargo.toml matches, tags main's
+#     HEAD, pushes the tag, then does the build.
+#
+# Either way the workflow builds the CLI, attaches binaries to a GitHub
+# Release, and auto-bumps `Formula/relay.rb` on main.
 
 on:
   push:
@@ -13,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Existing git tag to release (e.g. v0.1.0). Must already exist.'
+        description: 'Version to release, e.g. 0.1.0 or v0.1.0. Cargo.toml must match.'
         required: true
         type: string
 
@@ -21,8 +28,56 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    name: resolve version + tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ inputs.version }}"
+            VERSION="v${RAW#v}"                           # normalize to v prefix
+            PLAIN="${VERSION#v}"
+
+            # Cargo.toml sanity check — catches "I meant to bump the version
+            # but forgot" before it ships a binary that reports the old version.
+            if ! grep -q "^version = \"${PLAIN}\"$" Cargo.toml; then
+              echo "::error::Cargo.toml [workspace.package] version does not match ${PLAIN}."
+              echo "::error::Update the version, commit, push main, and re-dispatch."
+              grep '^version = ' Cargo.toml || true
+              exit 1
+            fi
+
+            if git rev-parse --verify "refs/tags/${VERSION}" >/dev/null 2>&1; then
+              echo "tag ${VERSION} already exists — reusing existing tag"
+            else
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git config user.name  "github-actions[bot]"
+              git tag -a "${VERSION}" -m "relay ${VERSION}"
+              git push origin "${VERSION}"
+              echo "created + pushed tag ${VERSION}"
+            fi
+          else
+            VERSION="${{ github.ref_name }}"
+            echo "tag-triggered release: ${VERSION}"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
   build:
     name: build ${{ matrix.target }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -34,11 +89,11 @@ jobs:
             os: macos-14
     runs-on: ${{ matrix.os }}
     env:
-      VERSION: ${{ inputs.version || github.ref_name }}
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version || github.ref }}
+          ref: ${{ needs.prepare.outputs.version }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -72,14 +127,14 @@ jobs:
 
   release:
     name: publish release
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ inputs.version || github.ref_name }}
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version || github.ref }}
+          ref: ${{ needs.prepare.outputs.version }}
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -99,10 +154,10 @@ jobs:
 
   bump-formula:
     name: bump homebrew formula on main
-    needs: release
+    needs: [prepare, release]
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ inputs.version || github.ref_name }}
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,7 +173,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PLAIN_VERSION="${VERSION#v}"                 # strip the leading v
+          PLAIN_VERSION="${VERSION#v}"
           BASE="https://github.com/${{ github.repository }}/releases/download/${VERSION}"
 
           SHA_ARM64="$(awk '{print $1}' "dist/relay-${VERSION}-aarch64-apple-darwin.tar.gz.sha256")"
