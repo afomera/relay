@@ -9,9 +9,9 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
     server: {
-      allowedHosts: ["andrea.sharedwithrelay.com", ".sharedwithrelay.com"],
+      allowedHosts: ["relay-dev.sharedwithrelay.com", ".sharedwithrelay.com"],
       hmr: {
-        host: "andrea.sharedwithrelay.com",
+        host: "relay-dev.sharedwithrelay.com",
         protocol: "wss",
         clientPort: 443,
       },
