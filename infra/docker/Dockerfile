@@ -13,7 +13,15 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 COPY migrations ./migrations
 
-RUN cargo build --release --bin relayd
+# Cache mounts persist cargo registry + target/ across builds. Without
+# them, every `docker compose up --build` recompiles the whole dep graph.
+# The final `cp` is required because cache-mount content is discarded
+# after the RUN, so we copy the binary out to a non-cached path first.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    cargo build --release --bin relayd && \
+    cp /src/target/release/relayd /relayd
 
 # ---- runtime stage ----
 FROM debian:bookworm-slim
@@ -24,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --system --home /var/lib/relay --create-home relay
 WORKDIR /var/lib/relay
 
-COPY --from=build /src/target/release/relayd /usr/local/bin/relayd
+COPY --from=build /relayd /usr/local/bin/relayd
 
 USER relay
 EXPOSE 80 443 443/udp
