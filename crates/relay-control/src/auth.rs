@@ -58,20 +58,11 @@ pub async fn require_auth(
 }
 
 async fn fetch_user(db: &Db, id: Uuid) -> Result<Option<User>, DbError> {
-    let row = relay_db::sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-        .bind(id)
-        .fetch_optional(db.sqlite())
-        .await?;
-    Ok(row)
+    dao::find_user_by_id(db, id).await
 }
 
 async fn fetch_org(db: &Db, id: Uuid) -> Result<Option<Organization>, DbError> {
-    let row =
-        relay_db::sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE id = ?")
-            .bind(id)
-            .fetch_optional(db.sqlite())
-            .await?;
-    Ok(row)
+    dao::find_org_by_id(db, id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -292,13 +283,7 @@ async fn unique_slug(db: &Db, base: &str) -> String {
     let mut slug = sluggify(base);
     let mut n = 0u32;
     loop {
-        let exists = relay_db::sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(1) FROM organizations WHERE slug = ?",
-        )
-        .bind(&slug)
-        .fetch_one(db.sqlite())
-        .await
-        .unwrap_or(0);
+        let exists = dao::count_orgs_by_slug(db, &slug).await.unwrap_or(0);
         if exists == 0 {
             return slug;
         }

@@ -718,10 +718,7 @@ async fn delete_domain(
         Ok(a) => a,
         Err(r) => return r,
     };
-    let _ = relay_db::sqlx::query("DELETE FROM custom_domains WHERE id = ?")
-        .bind(id)
-        .execute(state.db.sqlite())
-        .await;
+    let _ = dao::delete_custom_domain_by_id(&state.db, id).await;
     Redirect::to("/domains").into_response()
 }
 

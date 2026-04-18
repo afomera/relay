@@ -70,12 +70,7 @@ impl TunnelRecorder for DbTunnelRecorder {
     async fn record_disconnected(&self, tunnel_id: Uuid) -> Result<(), RecordError> {
         // Fetch org_id before the mark so the event carries enough context for
         // per-org filtering. If the row has already vanished, skip the event.
-        let org_id = sqlx::query_scalar::<_, Uuid>("SELECT org_id FROM tunnels WHERE id = ?")
-            .bind(tunnel_id)
-            .fetch_optional(self.db.sqlite())
-            .await
-            .ok()
-            .flatten();
+        let org_id = dao::find_tunnel_org_id(&self.db, tunnel_id).await.ok().flatten();
         dao::mark_tunnel_disconnected(&self.db, tunnel_id)
             .await
             .map_err(|e| RecordError::Other(e.to_string()))?;
