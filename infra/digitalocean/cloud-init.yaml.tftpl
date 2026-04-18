@@ -46,7 +46,7 @@ runcmd:
     [ -f /home/relay/.ssh/authorized_keys ] && chmod 600 /home/relay/.ssh/authorized_keys
     systemctl restart ssh || systemctl restart sshd || true
 
-    # --- Swap: 2 GB. Cheap insurance on 1–2 GB droplets.
+    # --- Swap: 2 GB. Cheap insurance on 1-2 GB droplets.
     if [ ! -f /swapfile ]; then
       fallocate -l 2G /swapfile
       chmod 600 /swapfile
