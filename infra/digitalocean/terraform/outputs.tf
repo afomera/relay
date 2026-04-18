@@ -17,7 +17,7 @@ output "ssh_command" {
 }
 
 output "relay_data_key" {
-  description = "Persist this somewhere safe — lose it and you lose every cert."
+  description = "Persist this somewhere safe - lose it and you lose every cert."
   value       = sensitive(local.data_key_b64)
   sensitive   = true
 }

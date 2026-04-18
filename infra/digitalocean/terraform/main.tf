@@ -8,8 +8,8 @@ locals {
 
   // The Cloudflare provider accepts full record names even when they nest
   // below the zone. `cf_record_name` turns the admin hostname into the
-  // record name relative to its zone. (We don't actually need to — CF
-  // accepts `dash.withrelay.dev` when zone_id is withrelay.dev's — but
+  // record name relative to its zone. (We don't actually need to - CF
+  // accepts `dash.withrelay.dev` when zone_id is withrelay.dev's - but
   // passing short names keeps plans diff-clean.)
   cf_admin_record = var.admin_hostname
 }
@@ -53,7 +53,7 @@ resource "digitalocean_firewall" "relay" {
   name        = var.droplet_name
   droplet_ids = [digitalocean_droplet.relay.id]
 
-  // SSH — tighten ssh_allow_from to your office IP(s) in prod.
+  // SSH - tighten ssh_allow_from to your office IP(s) in prod.
   inbound_rule {
     protocol         = "tcp"
     port_range       = "22"
@@ -84,7 +84,7 @@ resource "digitalocean_firewall" "relay" {
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
 
-  // Unrestricted egress — ACME, GitHub OAuth, Cloudflare API all need out.
+  // Unrestricted egress - ACME, GitHub OAuth, Cloudflare API all need out.
   outbound_rule {
     protocol              = "tcp"
     port_range            = "all"
