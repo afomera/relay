@@ -25,7 +25,7 @@
     {% endif %}
   </div>
   <p id="captures-empty" class="muted" {% if !captures.is_empty() %}hidden{% endif %}>No captured requests yet.
-    {% if tunnel.inspect == 0 %}Inspection is off for this tunnel — drop <code>--no-inspect</code> on the CLI to capture.{% endif %}
+    {% if !tunnel.inspect %}Inspection is off for this tunnel — drop <code>--no-inspect</code> on the CLI to capture.{% endif %}
   </p>
   <table id="captures-table" {% if captures.is_empty() %}hidden{% endif %}>
     <thead>

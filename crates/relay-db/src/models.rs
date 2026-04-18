@@ -60,7 +60,7 @@ pub struct Tunnel {
     pub hostname: String,
     pub state: String,
     pub labels_json: String,
-    pub inspect: i64,
+    pub inspect: bool,
     pub created_at: i64,
     pub last_seen_at: i64,
 }
@@ -101,7 +101,7 @@ pub struct InspectionCapture {
     pub req_body: Option<Vec<u8>>,
     pub resp_headers_json: Option<String>,
     pub resp_body: Option<Vec<u8>>,
-    pub truncated: i64,
+    pub truncated: bool,
     pub client_ip: Option<String>,
 }
 

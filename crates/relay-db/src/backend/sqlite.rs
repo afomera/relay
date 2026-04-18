@@ -330,7 +330,7 @@ pub(crate) async fn upsert_tunnel_by_hostname(
         .bind(now)
         .bind(kind)
         .bind(&labels_json)
-        .bind(inspect as i64)
+        .bind(inspect)
         .bind(id)
         .execute(pool(db))
         .await?;
@@ -347,7 +347,7 @@ pub(crate) async fn upsert_tunnel_by_hostname(
     .bind(kind)
     .bind(hostname)
     .bind(&labels_json)
-    .bind(inspect as i64)
+    .bind(inspect)
     .bind(now)
     .bind(now)
     .execute(pool(db))
@@ -591,7 +591,7 @@ pub(crate) async fn insert_full_capture(
     .bind(req_body)
     .bind(&resp_h)
     .bind(resp_body)
-    .bind(truncated as i64)
+    .bind(truncated)
     .bind(client_ip)
     .execute(pool(db))
     .await?;
@@ -658,7 +658,7 @@ pub(crate) async fn complete_capture(
     .bind(&hdr_json)
     .bind(req_body)
     .bind(resp_body)
-    .bind(truncated as i64)
+    .bind(truncated)
     .bind(id)
     .execute(pool(db))
     .await?;
