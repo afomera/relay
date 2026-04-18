@@ -39,10 +39,7 @@ pub fn build_client_config(
 }
 
 fn webpki_roots_owned() -> Vec<rustls::pki_types::TrustAnchor<'static>> {
-    // Minimal WebPKI root set: we depend on rustls' built-in platform verifier
-    // in prod. For M1, we only need to *optionally* accept a custom CA via
-    // `--cafile`, so an empty store is fine when `--insecure` is set.
-    Vec::new()
+    webpki_roots::TLS_SERVER_ROOTS.to_vec()
 }
 
 #[derive(Debug)]
