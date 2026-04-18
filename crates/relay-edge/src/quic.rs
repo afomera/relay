@@ -40,9 +40,15 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
 }
 
 fn build_server_config(cfg: &EdgeConfig) -> anyhow::Result<quinn::ServerConfig> {
-    let mut tls = rustls::ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(vec![cfg.tls_cert.clone()], cfg.tls_key.clone_key())?;
+    // Prefer the cert resolver when configured so QUIC picks the right cert
+    // via SNI (e.g. the ACME-issued cert for `dash.withrelay.dev` when the
+    // CLI connects there). Fall back to the static `tls_cert`/`tls_key` pair
+    // for dev where no resolver is wired up.
+    let builder = rustls::ServerConfig::builder().with_no_client_auth();
+    let mut tls = match cfg.tls_resolver.clone() {
+        Some(resolver) => builder.with_cert_resolver(resolver),
+        None => builder.with_single_cert(vec![cfg.tls_cert.clone()], cfg.tls_key.clone_key())?,
+    };
     tls.alpn_protocols = vec![ALPN.to_vec()];
     let quic_crypto = quinn::crypto::rustls::QuicServerConfig::try_from(tls)?;
     let mut sc = quinn::ServerConfig::with_crypto(Arc::new(quic_crypto));
