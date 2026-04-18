@@ -15,12 +15,13 @@ use futures::stream::Stream;
 use std::convert::Infallible;
 
 use crate::auth::{
-    AuthedUser, GithubCallback, SESSION_COOKIE, complete_github_login, generate_token,
-    require_auth, start_github_login,
+    AuthedUser, CLI_RETURN_COOKIE, GithubCallback, SESSION_COOKIE, complete_github_login,
+    generate_token, require_auth, start_github_login,
 };
 use crate::state::AppState;
 use crate::templates::{
-    CapturePage, DomainsPage, HomePage, LoginPage, OrgCtx, ReservationsPage, TokensPage, TunnelPage,
+    CapturePage, CliAuthorizePage, DomainsPage, HomePage, LoginPage, OrgCtx, ReservationsPage,
+    TokensPage, TunnelPage,
 };
 
 pub fn router(state: AppState) -> Router {
@@ -31,6 +32,8 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/github/callback", get(github_callback))
         .route("/auth/logout", get(logout))
         .route("/auth/dev/login", get(dev_login))
+        .route("/cli/authorize", get(cli_authorize))
+        .route("/cli/authorize/approve", post(cli_authorize_approve))
         .route("/tokens", get(tokens_page).post(create_token))
         .route("/tokens/:id/delete", post(delete_token_route))
         .route("/reservations", get(reservations_page).post(create_reservation))
@@ -296,9 +299,113 @@ async fn github_callback(
     axum::extract::Query(params): axum::extract::Query<GithubCallback>,
 ) -> Response {
     match complete_github_login(&state, jar, params).await {
-        Ok((jar, _sid)) => (jar, Redirect::to("/")).into_response(),
+        Ok((jar, _sid)) => {
+            // If a CLI login was in progress before the GitHub detour, bounce
+            // the user back to the authorize page; otherwise land on home.
+            let target = if jar.get(CLI_RETURN_COOKIE).is_some() { "/cli/authorize" } else { "/" };
+            (jar, Redirect::to(target)).into_response()
+        }
         Err(e) => e.into_response(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// CLI authorize flow: browser → /cli/authorize?callback=&state= →
+// (optional login) → confirmation → POST approve → redirect back to callback
+// with a freshly-minted token.
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct CliAuthorizeQuery {
+    callback: String,
+    state: String,
+}
+
+/// Only accept loopback callbacks. Anything else risks handing a token to a
+/// remote party. We parse loosely (no full URL crate) — just enough to check
+/// the scheme and host.
+fn validate_loopback_callback(raw: &str) -> Result<(), &'static str> {
+    let after_scheme = raw.strip_prefix("http://").ok_or("callback must use http (loopback)")?;
+    // host is everything before the next '/', ':', or '?'.
+    let host_end = after_scheme.find(['/', ':', '?']).unwrap_or(after_scheme.len());
+    let host = &after_scheme[..host_end];
+    if host.is_empty() {
+        return Err("callback has no host");
+    }
+    match host {
+        "127.0.0.1" | "localhost" | "[::1]" => Ok(()),
+        _ => Err("callback must be a loopback address (127.0.0.1 / localhost / ::1)"),
+    }
+}
+
+async fn cli_authorize(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    axum::extract::Query(q): axum::extract::Query<CliAuthorizeQuery>,
+) -> Response {
+    if let Err(reason) = validate_loopback_callback(&q.callback) {
+        return (StatusCode::BAD_REQUEST, format!("invalid callback: {reason}")).into_response();
+    }
+    // Stash callback+state in an encrypted cookie so the confirmation POST
+    // (and any login detour) can pick it back up.
+    let payload = format!("{}\n{}", q.callback, q.state);
+    let cookie = Cookie::build((CLI_RETURN_COOKIE, payload))
+        .path("/")
+        .http_only(true)
+        .same_site(axum_extra::extract::cookie::SameSite::Lax)
+        .max_age(time::Duration::minutes(10))
+        .build();
+    let jar = jar.add(cookie);
+
+    let AuthedUser { user, org } = match require_auth(&state, &jar).await {
+        Ok(a) => a,
+        // Redirect into login; cookie persists the pending CLI auth.
+        Err(_) => return (jar, Redirect::to("/login")).into_response(),
+    };
+
+    (jar, CliAuthorizePage { ctx: OrgCtx::from(&user, &org), callback: q.callback, state: q.state })
+        .into_response()
+}
+
+async fn cli_authorize_approve(State(state): State<AppState>, jar: PrivateCookieJar) -> Response {
+    let AuthedUser { user, org } = match require_auth(&state, &jar).await {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let Some(raw) = jar.get(CLI_RETURN_COOKIE).map(|c| c.value().to_string()) else {
+        return (StatusCode::BAD_REQUEST, "no pending CLI login").into_response();
+    };
+    let Some((callback, cli_state)) = raw.split_once('\n') else {
+        return (StatusCode::BAD_REQUEST, "malformed pending CLI cookie").into_response();
+    };
+    // Re-validate so a stale cookie can't smuggle in a non-loopback URL.
+    if let Err(reason) = validate_loopback_callback(callback) {
+        return (StatusCode::BAD_REQUEST, format!("invalid callback: {reason}")).into_response();
+    }
+
+    let (plain, hashed) = generate_token();
+    let name = format!("relay cli ({})", time::OffsetDateTime::now_utc().date());
+    if let Err(e) = dao::create_api_token(
+        &state.db,
+        org.id,
+        user.id,
+        &name,
+        &hashed,
+        "tunnels:create,tunnels:manage,domains:manage",
+    )
+    .await
+    {
+        return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+    }
+
+    let sep = if callback.contains('?') { '&' } else { '?' };
+    let redirect_url = format!(
+        "{callback}{sep}token={tok}&state={st}",
+        tok = urlencoding::encode(&plain),
+        st = urlencoding::encode(cli_state),
+    );
+    let jar = jar.remove(Cookie::from(CLI_RETURN_COOKIE));
+    (jar, Redirect::to(&redirect_url)).into_response()
 }
 
 async fn logout(State(state): State<AppState>, jar: PrivateCookieJar) -> Response {

@@ -76,16 +76,24 @@ enum Command {
 
 #[derive(Subcommand)]
 enum AuthCmd {
-    /// Save an API token (and optionally the server it belongs to).
+    /// Sign in to a relay server.
+    ///
+    /// Default: opens the dashboard in your browser, creates a token after
+    /// you confirm, and saves it locally. Pass `--token` to skip the browser
+    /// and paste a pre-minted PAT (useful for CI / headless machines).
     Login {
+        /// Paste a pre-existing PAT instead of doing the browser dance.
         #[arg(long)]
-        token: String,
+        token: Option<String>,
         /// Relay server this token belongs to (host:port UDP). Pass this
         /// when pointing at a self-hosted relay; omit it to keep whatever
         /// server is already in the config (or fall back to the built-in
         /// default).
         #[arg(long)]
         server: Option<String>,
+        /// Skip auto-opening the browser; print the URL instead.
+        #[arg(long)]
+        no_browser: bool,
     },
     Logout,
     Status,

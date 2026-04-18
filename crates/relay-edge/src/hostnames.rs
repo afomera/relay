@@ -57,13 +57,7 @@ mod tests {
 
     #[test]
     fn preserves_fqdn() {
-        assert_eq!(
-            expand_hostname("andrea.example.com", "other.com"),
-            "andrea.example.com"
-        );
-        assert_eq!(
-            expand_hostname("*.andrea.example.com", "other.com"),
-            "*.andrea.example.com"
-        );
+        assert_eq!(expand_hostname("andrea.example.com", "other.com"), "andrea.example.com");
+        assert_eq!(expand_hostname("*.andrea.example.com", "other.com"), "*.andrea.example.com");
     }
 }

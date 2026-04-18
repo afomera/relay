@@ -17,6 +17,10 @@ use uuid::Uuid;
 use crate::state::AppState;
 
 pub const SESSION_COOKIE: &str = "relay_session";
+/// Short-lived (10 min) encrypted cookie that stashes a CLI login-in-progress
+/// so the user can bounce through /login → GitHub → back to /cli/authorize
+/// without losing their place.
+pub const CLI_RETURN_COOKIE: &str = "relay_cli_pending";
 
 #[derive(Debug, Clone)]
 pub struct AuthedUser {

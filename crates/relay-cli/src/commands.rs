@@ -16,16 +16,18 @@ pub mod auth {
 
     pub async fn run(cmd: AuthCmd, mut cfg: Config) -> anyhow::Result<()> {
         match cmd {
-            AuthCmd::Login { token, server } => {
-                cfg.token = Some(token);
-                if let Some(s) = server {
+            AuthCmd::Login { token: Some(tok), server, no_browser: _ } => {
+                save_token(&mut cfg, tok, server)?;
+            }
+            AuthCmd::Login { token: None, server, no_browser } => {
+                if let Some(s) = server.clone() {
                     cfg.server = Some(s);
                 }
-                config::save(&cfg)?;
-                let path = config::path()?;
-                let active_server = cfg.server.as_deref().unwrap_or(DEFAULT_SERVER);
-                println!("saved token to {}", path.display());
-                println!("server: {active_server}");
+                let server_host = cfg.server.as_deref().unwrap_or(DEFAULT_SERVER).to_string();
+                let dashboard = dashboard_url_from(&server_host);
+                let tok =
+                    crate::commands::auth_web::run_browser_flow(&dashboard, no_browser).await?;
+                save_token(&mut cfg, tok, server)?;
             }
             AuthCmd::Logout => {
                 cfg.token = None;
@@ -48,6 +50,160 @@ pub mod auth {
             }
         }
         Ok(())
+    }
+
+    fn save_token(cfg: &mut Config, token: String, server: Option<String>) -> anyhow::Result<()> {
+        cfg.token = Some(token);
+        if let Some(s) = server {
+            cfg.server = Some(s);
+        }
+        config::save(cfg)?;
+        let path = config::path()?;
+        let active_server = cfg.server.as_deref().unwrap_or(DEFAULT_SERVER);
+        println!("saved token to {}", path.display());
+        println!("server: {active_server}");
+        Ok(())
+    }
+
+    /// The server field is `host:port` for UDP/QUIC; the dashboard is HTTPS
+    /// on the same host (default port 443). Strip the port for the browser URL.
+    fn dashboard_url_from(server: &str) -> String {
+        let host = server.split(':').next().unwrap_or(server);
+        format!("https://{host}")
+    }
+}
+
+pub mod auth_web {
+    use std::net::{Ipv4Addr, SocketAddr};
+    use std::sync::Arc;
+
+    use anyhow::Context;
+    use hyper::body::Incoming;
+    use hyper::service::service_fn;
+    use hyper::{Request, Response, StatusCode};
+    use hyper_util::rt::TokioIo;
+    use tokio::net::TcpListener;
+    use tokio::sync::{Mutex, oneshot};
+
+    type CallbackTx = Arc<Mutex<Option<oneshot::Sender<Result<String, String>>>>>;
+
+    const SUCCESS_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8"><title>authorized</title>
+<style>body{font-family:system-ui;max-width:32rem;margin:5rem auto;padding:0 1rem;color:#222}
+h1{font-size:1.4rem}code{background:#f3f3f3;padding:.15em .3em;border-radius:3px}</style></head>
+<body><h1>authorized ✓</h1><p>Token delivered to the CLI — you can close this tab.</p></body></html>"#;
+
+    const ERROR_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8"><title>auth error</title></head>
+<body><h1>authorization failed</h1><p>The CLI didn't accept the callback. Close this tab and retry.</p></body></html>"#;
+
+    /// Run the browser-based PAT handshake end-to-end. Returns the new token.
+    ///
+    /// Flow: bind a loopback TCP listener, open the browser to
+    /// `<dashboard>/cli/authorize?callback=http://127.0.0.1:PORT/cb&state=RAND`,
+    /// wait for the dashboard to hit the callback, verify the state, capture
+    /// the token. 5-minute overall timeout.
+    pub async fn run_browser_flow(dashboard: &str, no_browser: bool) -> anyhow::Result<String> {
+        let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+            .await
+            .context("bind loopback listener")?;
+        let port = listener.local_addr()?.port();
+        let state_nonce = random_state();
+
+        let (tx, rx) = oneshot::channel::<Result<String, String>>();
+        let tx = Arc::new(Mutex::new(Some(tx)));
+        let expected_state = state_nonce.clone();
+
+        let server_task = tokio::spawn(async move {
+            loop {
+                let (tcp, _) = match listener.accept().await {
+                    Ok(v) => v,
+                    Err(_) => break,
+                };
+                let tx = tx.clone();
+                let expected = expected_state.clone();
+                tokio::spawn(async move {
+                    let io = TokioIo::new(tcp);
+                    let svc = service_fn(move |req: Request<Incoming>| {
+                        let tx = tx.clone();
+                        let expected = expected.clone();
+                        async move { handle_callback(req, expected, tx).await }
+                    });
+                    let _ =
+                        hyper::server::conn::http1::Builder::new().serve_connection(io, svc).await;
+                });
+            }
+        });
+
+        let url = format!(
+            "{dashboard}/cli/authorize?callback=http%3A%2F%2F127.0.0.1%3A{port}%2Fcb&state={state}",
+            state = state_nonce,
+        );
+        if no_browser {
+            println!("open this URL to sign in: {url}");
+        } else {
+            println!("opening {dashboard} in your browser — approve the CLI to finish sign-in");
+            if let Err(e) = webbrowser::open(&url) {
+                println!("couldn't auto-open a browser ({e}); open this URL manually:\n  {url}");
+            }
+        }
+
+        let timeout = tokio::time::Duration::from_secs(300);
+        let token = tokio::time::timeout(timeout, rx)
+            .await
+            .context("timed out waiting for browser callback (5 min)")?
+            .context("callback listener dropped")?
+            .map_err(anyhow::Error::msg)?;
+        server_task.abort();
+        Ok(token)
+    }
+
+    async fn handle_callback(
+        req: Request<Incoming>,
+        expected_state: String,
+        tx: CallbackTx,
+    ) -> Result<Response<String>, std::convert::Infallible> {
+        let path_and_query = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/");
+        if !path_and_query.starts_with("/cb") {
+            return Ok(not_found());
+        }
+        let query = req.uri().query().unwrap_or_default();
+        let mut token = None;
+        let mut got_state = None;
+        for (k, v) in form_urlencoded::parse(query.as_bytes()) {
+            match k.as_ref() {
+                "token" => token = Some(v.into_owned()),
+                "state" => got_state = Some(v.into_owned()),
+                _ => {}
+            }
+        }
+        let result = match (token, got_state) {
+            (Some(t), Some(s)) if s == expected_state => Ok(t),
+            (_, Some(s)) if s != expected_state => Err("state mismatch".to_string()),
+            _ => Err("callback missing token or state".to_string()),
+        };
+        let mut slot = tx.lock().await;
+        if let Some(tx) = slot.take() {
+            let _ = tx.send(result.clone());
+        }
+        let body = if result.is_ok() { SUCCESS_HTML } else { ERROR_HTML };
+        Ok(Response::builder()
+            .status(if result.is_ok() { StatusCode::OK } else { StatusCode::BAD_REQUEST })
+            .header("content-type", "text/html; charset=utf-8")
+            .body(body.to_string())
+            .expect("static response"))
+    }
+
+    fn not_found() -> Response<String> {
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body("not found".to_string())
+            .expect("static response")
+    }
+
+    fn random_state() -> String {
+        use rand::Rng;
+        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let mut rng = rand::thread_rng();
+        (0..32).map(|_| CHARSET[rng.gen_range(0..CHARSET.len())] as char).collect()
     }
 }
 

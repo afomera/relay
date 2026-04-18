@@ -24,6 +24,17 @@ pub struct LoginPage {
     pub dev_enabled: bool,
 }
 
+/// Shown when a CLI (or any off-dashboard client) sends the user to
+/// `/cli/authorize` to mint an API token bound to a local callback URL.
+/// The `callback` has already been origin-validated by the handler.
+#[derive(Template)]
+#[template(path = "cli_authorize.html")]
+pub struct CliAuthorizePage {
+    pub ctx: OrgCtx,
+    pub callback: String,
+    pub state: String,
+}
+
 #[derive(Template)]
 #[template(path = "home.html")]
 pub struct HomePage {

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>authorize cli · relay</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="/_static/app.css">
+</head>
+<body class="auth-screen">
+<div class="auth-card">
+  <h1>{{ crate::icons::icon("terminal")|safe }} authorize cli</h1>
+  <p class="sub">
+    A relay CLI on this machine is asking to create an API token under
+    <strong>{{ ctx.org_name }}</strong>.
+  </p>
+  <p class="note">
+    The token will be sent back to <code>{{ callback }}</code> — that's your local
+    machine. If you didn't start this on your terminal, close this tab.
+  </p>
+  <form method="post" action="/cli/authorize/approve" class="stack">
+    <button class="btn" type="submit">
+      {{ crate::icons::icon("key")|safe }} authorize
+    </button>
+    <a class="btn ghost" href="/">cancel</a>
+  </form>
+</div>
+</body>
+</html>
