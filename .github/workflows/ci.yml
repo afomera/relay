@@ -10,6 +10,12 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
+# Cancel any in-progress CI run for the same branch/PR when a new push
+# arrives. Release runs (separate workflow, tag-scoped) are unaffected.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fmt:
     name: cargo fmt
