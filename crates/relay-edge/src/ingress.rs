@@ -55,11 +55,17 @@ async fn handle_inner(
     remote: SocketAddr,
     req: Request<Body>,
 ) -> anyhow::Result<Response<Body>> {
+    // HTTP/1.1 puts the host in the `Host` header. HTTP/2 puts it in the
+    // `:authority` pseudo-header, which hyper exposes via `req.uri().host()`.
+    // Fall back to the URI authority so h2 clients aren't rejected as
+    // "missing host header".
     let host = req
         .headers()
         .get(http::header::HOST)
         .and_then(|v| v.to_str().ok())
-        .map(|h| h.split(':').next().unwrap_or(h).to_ascii_lowercase())
+        .map(|h| h.split(':').next().unwrap_or(h).to_string())
+        .or_else(|| req.uri().host().map(|h| h.to_string()))
+        .map(|h| h.to_ascii_lowercase())
         .unwrap_or_default();
 
     // ACME HTTP-01 challenge responder. Must come before tunnel lookup so a
