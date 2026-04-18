@@ -52,15 +52,13 @@ fn is_ws_upgrade_request(hdr: &HttpRequestHeader) -> bool {
     let mut upgrade_is_websocket = false;
     for (k, v) in &hdr.headers {
         match k.to_ascii_lowercase().as_str() {
-            "connection" => {
-                if v.split(',').any(|t| t.trim().eq_ignore_ascii_case("upgrade")) {
-                    has_upgrade_token = true;
-                }
+            "connection"
+                if v.split(',').any(|t| t.trim().eq_ignore_ascii_case("upgrade")) =>
+            {
+                has_upgrade_token = true;
             }
-            "upgrade" => {
-                if v.eq_ignore_ascii_case("websocket") {
-                    upgrade_is_websocket = true;
-                }
+            "upgrade" if v.eq_ignore_ascii_case("websocket") => {
+                upgrade_is_websocket = true;
             }
             _ => {}
         }
