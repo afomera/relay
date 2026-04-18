@@ -17,11 +17,35 @@ tunnel_base_domain = "sharedwithrelay.com"
 tunnel_zone_id     = "cloudflare-zone-id-for-sharedwithrelay-com"
 admin_hostname     = "dash.withrelay.dev"
 admin_zone_id      = "cloudflare-zone-id-for-withrelay-dev"
+# Optional: shown when visitors hit the apex of tunnel_base_domain with no
+# subdomain. Omit (or set to "") to fall back to the generic 404.
+marketing_url      = "withrelay.dev"
 
 # ---- relay config ----
 github_oauth_client_id     = "Iv1.abcdef..."
 github_oauth_client_secret = "secret-from-github-oauth-app"
 acme_contact_email         = "you@example.com"
+
+# ---- database ----
+#
+# Leave `database_url` empty (default) to use on-disk SQLite at
+# /var/lib/relay/relay.db — the simplest single-host deploy.
+#
+# Set it to a managed-Postgres connection string to point relay at Postgres
+# instead. The URL is injected as DATABASE_URL on the droplet and relayd
+# picks it up via `db.url_env = "DATABASE_URL"`. Any libpq-style params go
+# through untouched — keep `sslmode=require` (or verify-full) for managed
+# services that require TLS.
+#
+# PlanetScale Postgres (prod runs on 18.3):
+# database_url = "postgres://USER:PASS@HOST.pgsql.planetscale.com:5432/DB?sslmode=require"
+#
+# Neon / Supabase / Crunchy Bridge connection strings follow the same shape.
+#
+# Optional pool tuning. Leave unset for relay-db defaults (SQLite=10,
+# Postgres=20, 5s acquire timeout).
+# db_max_connections      = 20
+# db_acquire_timeout_secs = 5
 
 # Leave empty to allow any GitHub user; list one or more GitHub orgs to
 # restrict sign-in to their members. Case-insensitive. For a company

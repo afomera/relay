@@ -76,6 +76,7 @@ async fn http_tunnel_end_to_end() {
         bind_https: None,
         base_domain: base.clone(),
         temporary_domain: format!("temporary.{base}"),
+        marketing_url: None,
         public_url_scheme: "http".into(),
         public_port: None,
         tls_cert: cert,

@@ -145,6 +145,11 @@ async fn handle_inner(
     }
 
     let Some(handle) = state.reg.lookup_for_request(&host) else {
+        if host.eq_ignore_ascii_case(&state.cfg.base_domain) {
+            if let Some(marketing) = state.cfg.marketing_url.as_deref() {
+                return Ok(apex_landing_page(&host, marketing));
+            }
+        }
         return Ok(error_page(
             StatusCode::NOT_FOUND,
             &format!("no active tunnel bound to `{host}`"),
@@ -545,6 +550,41 @@ code{{background:var(--code-bg);padding:.15em .3em;border-radius:3px}}
         .header("content-type", "text/html; charset=utf-8")
         .body(Body::from(html))
         .expect("static error page")
+}
+
+/// Rendered when someone hits the apex of `base_domain` directly (no
+/// subdomain). Apex has no tunnel to route to, so instead of a generic 404
+/// we point visitors at the marketing site that explains how to use or
+/// self-host relay.
+fn apex_landing_page(host: &str, marketing_url: &str) -> Response<Body> {
+    let href = if marketing_url.contains("://") {
+        marketing_url.to_string()
+    } else {
+        format!("https://{marketing_url}")
+    };
+    let html = format!(
+        r#"<!doctype html><html><head><meta charset="utf-8"><title>relay</title>
+<meta name="color-scheme" content="light dark">
+<style>:root{{--fg:#222;--bg:#fff;--code-bg:#f3f3f3;--muted:#666;--link:#2a5db0}}
+@media (prefers-color-scheme: dark){{:root{{--fg:#e6e6e6;--bg:#111;--code-bg:#1e1e1e;--muted:#888;--link:#7aa7e0}}}}
+html,body{{background:var(--bg);color:var(--fg)}}
+body{{font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem}}
+h1{{font-size:1.4rem}}
+a{{color:var(--link)}}
+code{{background:var(--code-bg);padding:.15em .3em;border-radius:3px}}
+.sub{{color:var(--muted)}}</style></head>
+<body><h1>relay</h1>
+<p><code>{host}</code> is the tunnel ingress — tunnels live on subdomains like <code>*.{host}</code>.</p>
+<p>Visit <a href="{href}">{marketing}</a> to learn how to run your own tunnels.</p></body></html>"#,
+        host = html_escape(host),
+        href = html_escape(&href),
+        marketing = html_escape(marketing_url),
+    );
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::from(html))
+        .expect("static apex page")
 }
 
 fn html_escape(s: &str) -> String {

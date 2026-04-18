@@ -19,6 +19,11 @@ pub struct EdgeConfig {
 
     pub base_domain: String,
     pub temporary_domain: String,
+    /// Optional marketing site to redirect users to when they hit the apex
+    /// of `base_domain` (no subdomain). Set for the hosted deployment where
+    /// tunnels live under one domain and marketing content lives under
+    /// another. Leave unset for self-hosted deploys that don't need this.
+    pub marketing_url: Option<String>,
     /// `https` in prod, `http` in dev — used in rendered public URLs.
     pub public_url_scheme: String,
     /// When set, appended to rendered public URLs as `:<port>`. Used in dev

@@ -38,9 +38,13 @@ resource "digitalocean_droplet" "relay" {
     acme_directory             = var.acme_directory
     tunnel_base_domain         = var.tunnel_base_domain
     tunnel_zone_id             = var.tunnel_zone_id
+    marketing_url              = var.marketing_url
     admin_hostname             = var.admin_hostname
     relay_git_url              = var.relay_git_url
     relay_git_ref              = var.relay_git_ref
+    database_url               = var.database_url
+    db_max_connections         = var.db_max_connections
+    db_acquire_timeout_secs    = var.db_acquire_timeout_secs
   })
 }
 

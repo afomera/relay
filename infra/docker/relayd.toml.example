@@ -15,6 +15,10 @@ tunnel_scheme = "https"
 [domains]
 base      = "sharedwithrelay.com"
 temporary = "temporary.sharedwithrelay.com"
+# When set, visitors who land on the apex of `base` (no subdomain) are shown
+# a landing page pointing here instead of a bare 404. Unset for self-hosted
+# deploys that don't have a separate marketing site.
+marketing_url = "withrelay.dev"
 
 [db]
 # For production, use Postgres (once D21 lands). Until then, SQLite:

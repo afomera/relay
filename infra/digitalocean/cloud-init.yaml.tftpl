@@ -89,9 +89,22 @@ write_files:
       [domains]
       base      = "${tunnel_base_domain}"
       temporary = "temporary.${tunnel_base_domain}"
+%{ if marketing_url != "" ~}
+      marketing_url = "${marketing_url}"
+%{ endif ~}
 
       [db]
+%{ if database_url != "" ~}
+      url_env = "DATABASE_URL"
+%{ else ~}
       url = "sqlite:///var/lib/relay/relay.db"
+%{ endif ~}
+%{ if db_max_connections != null ~}
+      max_connections = ${db_max_connections}
+%{ endif ~}
+%{ if db_acquire_timeout_secs != null ~}
+      acquire_timeout_secs = ${db_acquire_timeout_secs}
+%{ endif ~}
 
       [github_oauth]
       client_id         = "${github_oauth_client_id}"
@@ -118,7 +131,13 @@ write_files:
       RELAY_DATA_KEY=${data_key_b64}
       GITHUB_OAUTH_SECRET=${github_oauth_client_secret}
       CLOUDFLARE_API_TOKEN=${cloudflare_api_token}
-      POSTGRES_PASSWORD=unused-until-postgres-lands
+%{ if database_url != "" ~}
+      DATABASE_URL=${database_url}
+%{ endif ~}
+      # Used only by the sibling `postgres` container in docker-compose.yml so
+      # its startup doesn't fail on a missing env. relayd ignores it unless
+      # DATABASE_URL explicitly points at postgres://relay:...@postgres:5432/relay.
+      POSTGRES_PASSWORD=unused-set-DATABASE_URL-to-use-postgres
       ENV_EOF
       chmod 600 /home/relay/relay/infra/docker/.env
       chown -R relay:relay /home/relay/relay

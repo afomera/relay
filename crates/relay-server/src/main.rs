@@ -110,6 +110,11 @@ struct DomainsSection {
     base: String,
     #[serde(default)]
     temporary: Option<String>,
+    /// Marketing site shown when a visitor hits the apex of `base` with no
+    /// subdomain. Optional — leave unset for self-hosted deploys that don't
+    /// have a separate marketing domain.
+    #[serde(default)]
+    marketing_url: Option<String>,
 }
 
 /// `[db]` config. Exactly one of `url` / `url_env` must be set; the latter
@@ -240,6 +245,7 @@ async fn run_dev(args: Args) -> anyhow::Result<()> {
         bind_https: None,
         base_domain: args.base_domain.clone(),
         temporary_domain: temporary,
+        marketing_url: None,
         public_url_scheme: "http".into(),
         public_port: Some(bind_http.port()),
         tls_cert: cert,
@@ -448,6 +454,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         bind_https: cfg.server.bind_https,
         base_domain: cfg.domains.base,
         temporary_domain: temporary,
+        marketing_url: cfg.domains.marketing_url,
         public_url_scheme: cfg.server.tunnel_scheme.clone(),
         public_port: None,
         tls_cert: cert.clone(),

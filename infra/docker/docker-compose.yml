@@ -23,6 +23,11 @@ services:
       RELAY_DATA_KEY: ${RELAY_DATA_KEY}
       GITHUB_OAUTH_SECRET: ${GITHUB_OAUTH_SECRET}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      # Optional. When set, relayd picks it up via `db.url_env = "DATABASE_URL"`
+      # in relayd.toml and talks Postgres. Unset → on-disk SQLite under
+      # /var/lib/relay. Point this at a managed Postgres (PlanetScale, Neon,
+      # Fly) or at the sibling `postgres` service below.
+      DATABASE_URL: ${DATABASE_URL:-}
     volumes:
       - ./relayd.toml:/etc/relay/relayd.toml:ro
       - relay-data:/var/lib/relay
@@ -31,7 +36,7 @@ services:
       - postgres
 
   postgres:
-    image: postgres:16
+    image: postgres:18.3-alpine
     environment:
       POSTGRES_USER: relay
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

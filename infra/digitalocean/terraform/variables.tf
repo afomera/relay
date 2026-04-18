@@ -49,6 +49,12 @@ variable "tunnel_base_domain" {
   type        = string
 }
 
+variable "marketing_url" {
+  description = "Optional marketing site shown when visitors land on the apex of tunnel_base_domain with no subdomain. Leave empty to fall back to the generic 404."
+  type        = string
+  default     = ""
+}
+
 variable "tunnel_zone_id" {
   description = "Cloudflare zone id for tunnel_base_domain."
   type        = string
@@ -86,6 +92,33 @@ variable "github_allowed_orgs" {
 variable "acme_contact_email" {
   description = "Email that ACME uses for account + expiry notices."
   type        = string
+}
+
+// ---- Database --------------------------------------------------------------
+//
+// Leave `database_url` empty to use on-disk SQLite at /var/lib/relay/relay.db
+// (the single-host default). Set it to a managed Postgres connection string
+// (PlanetScale Postgres, Neon, Crunchy, Fly) to point relay at Postgres
+// instead. The URL is injected as `DATABASE_URL`; relayd picks it up via
+// `db.url_env = "DATABASE_URL"` in the generated config.
+
+variable "database_url" {
+  description = "Managed Postgres URL (e.g. postgres://user:pass@host/db?sslmode=require). Leave empty for SQLite."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "db_max_connections" {
+  description = "Optional pool-size override. Unset falls back to relay-db defaults (SQLite=10, Postgres=20)."
+  type        = number
+  default     = null
+}
+
+variable "db_acquire_timeout_secs" {
+  description = "Optional per-acquire timeout in seconds. Unset falls back to the 5s default."
+  type        = number
+  default     = null
 }
 
 variable "acme_directory" {
