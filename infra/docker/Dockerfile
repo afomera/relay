@@ -13,12 +13,15 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 COPY migrations ./migrations
 
-# Cache mounts persist cargo registry + target/ across builds. Without
-# them, every `docker compose up --build` recompiles the whole dep graph.
-# The final `cp` is required because cache-mount content is discarded
-# after the RUN, so we copy the binary out to a non-cached path first.
+# Cache mounts persist cargo registry + target/ + rustup toolchain across
+# builds. Without them, every `docker compose up --build` (a) recompiles
+# the whole dep graph, and (b) re-downloads ~150MB of rust-std/rustc/etc.
+# because rust-toolchain.toml pins `stable`, which drifts past whatever
+# the base image preinstalled. The final `cp` is required because cache
+# content is discarded after the RUN, so we copy the binary out first.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/local/rustup \
     --mount=type=cache,target=/src/target \
     cargo build --release --bin relayd && \
     cp /src/target/release/relayd /relayd

@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::connect_info::Connected;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use relay_proto::ALPN as QUIC_ALPN; // unused here — kept for dep tidiness
 use rustls::server::ResolvesServerCert;
 use rustls::sign::CertifiedKey;
@@ -72,9 +73,11 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
                 let mut s = tower_service.clone();
                 async move { s.call(req).await }
             });
-            if let Err(e) = hyper::server::conn::http1::Builder::new()
-                .serve_connection(TokioIo::new(tls), hyper_service)
-                .with_upgrades()
+            // auto::Builder picks h1 or h2 based on ALPN. Without this we
+            // advertise h2 in ALPN but only know how to serve h1, so any
+            // h2 client (modern curl, browsers) drops mid-stream.
+            if let Err(e) = auto::Builder::new(TokioExecutor::new())
+                .serve_connection_with_upgrades(TokioIo::new(tls), hyper_service)
                 .await
             {
                 tracing::debug!(?e, %remote, "connection ended");
