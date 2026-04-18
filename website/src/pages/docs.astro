@@ -1,0 +1,185 @@
+---
+import Layout from "../layouts/Layout.astro";
+import CodeBlock from "../components/CodeBlock.astro";
+import { Icon } from "astro-icon/components";
+
+const toc = [
+  { id: "install", label: "Install" },
+  { id: "install-homebrew", label: "Homebrew", depth: 1 },
+  { id: "install-cargo", label: "Cargo", depth: 1 },
+  { id: "install-script", label: "Install script", depth: 1 },
+  { id: "authenticate", label: "Authenticate" },
+  { id: "start-tunnel", label: "Start a tunnel" },
+  { id: "http", label: "HTTP", depth: 1 },
+  { id: "reserved", label: "Reserved hostname", depth: 1 },
+  { id: "custom-domain", label: "Custom domain", depth: 1 },
+  { id: "tcp", label: "Raw TCP", depth: 1 },
+  { id: "next", label: "What's next" },
+];
+---
+
+<Layout title="Docs — Relay" description="Install relay via Homebrew or Cargo, add your auth token, and start tunneling.">
+  <section class="container-page py-14 sm:py-20">
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <article class="prose-doc min-w-0">
+        <div class="mb-8">
+          <p class="text-sm uppercase tracking-widest text-muted">Documentation</p>
+          <h1 class="mt-2 text-3xl sm:text-4xl font-semibold tracking-tight">Getting started</h1>
+          <p class="mt-3 text-muted max-w-2xl leading-relaxed">
+            Install the <code class="code-inline">relay</code> CLI, authenticate with your token, and
+            expose a local port to the internet. Most flows take under a minute.
+          </p>
+        </div>
+
+        <h2 id="install">Install</h2>
+        <p>Choose the path that matches your setup. Homebrew is the quickest on macOS.</p>
+
+        <h3 id="install-homebrew">
+          <span class="inline-flex items-center gap-2">
+            <Icon name="lucide:beer" class="h-5 w-5" style="color: var(--color-accent-500);" />
+            Homebrew (macOS, Apple Silicon)
+          </span>
+        </h3>
+        <p>Tap the repo and install the formula:</p>
+        <CodeBlock
+          lang="sh"
+          code={`brew tap afomera/relay https://github.com/afomera/relay.git
+brew install relay`}
+        />
+        <p>Verify the install:</p>
+        <CodeBlock lang="sh" code={`relay --version`} />
+
+        <h3 id="install-cargo">
+          <span class="inline-flex items-center gap-2">
+            <Icon name="lucide:package" class="h-5 w-5" style="color: var(--color-accent-500);" />
+            Cargo (any platform)
+          </span>
+        </h3>
+        <p>
+          If you have a Rust toolchain, install directly from the repo. Works on Intel macOS,
+          Linux, and Windows:
+        </p>
+        <CodeBlock
+          lang="sh"
+          code={`cargo install --git https://github.com/afomera/relay relay-cli`}
+        />
+        <p>
+          Make sure <code class="code-inline">~/.cargo/bin</code> is on your <code class="code-inline">PATH</code>.
+        </p>
+
+        <h3 id="install-script">
+          <span class="inline-flex items-center gap-2">
+            <Icon name="lucide:terminal" class="h-5 w-5" style="color: var(--color-accent-500);" />
+            Install script
+          </span>
+        </h3>
+        <p>Prefer a one-liner? The install script grabs the right binary for your OS:</p>
+        <CodeBlock
+          lang="sh"
+          code={`curl -fsSL https://raw.githubusercontent.com/afomera/relay/main/scripts/install.sh | sh`}
+        />
+
+        <h2 id="authenticate">Authenticate</h2>
+        <p>
+          Relay needs a personal access token to talk to the control plane. Grab one from your
+          account settings — it looks like <code class="code-inline">rly_pat_…</code>.
+        </p>
+        <CodeBlock lang="sh" code={`relay auth login --token rly_pat_...`} />
+        <p>
+          The token is stored in your OS keychain where available, and otherwise in
+          <code class="code-inline">~/.config/relay/credentials</code>. You only need to do this once
+          per machine.
+        </p>
+        <div class="callout my-6">
+          <Icon name="lucide:info" class="callout__icon" />
+          <p class="callout__body">
+            Prefer env vars? Set <code class="code-inline">RELAY_AUTH_TOKEN</code> and relay will use
+            it without the login step.
+          </p>
+        </div>
+
+        <h2 id="start-tunnel">Start a tunnel</h2>
+        <p>Once authenticated, point relay at any local port. Four common shapes:</p>
+
+        <h3 id="http">HTTP on a generated hostname</h3>
+        <p>The fastest path. Relay picks a memorable subdomain on the shared zone:</p>
+        <CodeBlock
+          lang="sh"
+          code={`relay http 3000
+# → https://bright-otter.temporary.sharedwithrelay.com`}
+        />
+
+        <h3 id="reserved">Reserved wildcard hostname</h3>
+        <p>Claim a stable name under your account's wildcard. Great for demos and webhooks:</p>
+        <CodeBlock
+          lang="sh"
+          code={`relay http 3000 --hostname api.andrea
+# → https://api.andrea.sharedwithrelay.com`}
+        />
+
+        <h3 id="custom-domain">Custom domain</h3>
+        <p>
+          Bring your own domain. Point a CNAME at relay, and certificates are provisioned
+          automatically:
+        </p>
+        <CodeBlock lang="sh" code={`relay http 3000 --domain tunnel.mycompany.com`} />
+
+        <h3 id="tcp">Raw TCP</h3>
+        <p>For Postgres, Redis, SSH, or anything else that speaks TCP:</p>
+        <CodeBlock
+          lang="sh"
+          code={`relay tcp 5432
+# → tcp.sharedwithrelay.com:29734`}
+        />
+
+        <h2 id="next">What's next</h2>
+        <ul>
+          <li>
+            Explore the full CLI with <code class="code-inline">relay --help</code>.
+          </li>
+          <li>
+            Want to run your own control plane? See the
+            <a href="https://github.com/afomera/relay/blob/main/docs/self-hosting.md" target="_blank" rel="noopener">self-hosting guide</a>.
+          </li>
+          <li>
+            Read the
+            <a href="https://github.com/afomera/relay/blob/main/SPEC.md" target="_blank" rel="noopener">spec</a>
+            for architecture and milestones.
+          </li>
+        </ul>
+
+        <div class="mt-12 flex flex-wrap items-center gap-3">
+          <a href="https://github.com/afomera/relay" target="_blank" rel="noopener" class="btn btn-ghost">
+            <Icon name="lucide:github" class="h-4 w-4" />
+            View source
+          </a>
+          <a href="/" class="btn btn-ghost">
+            <Icon name="lucide:arrow-left" class="h-4 w-4" />
+            Back home
+          </a>
+        </div>
+      </article>
+
+      <aside class="hidden lg:block">
+        <div class="sticky top-24">
+          <p class="mb-3 text-xs uppercase tracking-widest text-muted">On this page</p>
+          <nav class="flex flex-col gap-1.5 text-sm">
+            {
+              toc.map((item) => (
+                <a
+                  href={`#${item.id}`}
+                  class:list={[
+                    "text-muted transition hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]",
+                    item.depth === 1 ? "pl-3" : "",
+                  ]}
+                >
+                  {item.label}
+                </a>
+              ))
+            }
+          </nav>
+        </div>
+      </aside>
+    </div>
+  </section>
+</Layout>

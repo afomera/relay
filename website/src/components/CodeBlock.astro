@@ -1,0 +1,43 @@
+---
+import { Icon } from "astro-icon/components";
+
+interface Props {
+  code: string;
+  lang?: string;
+}
+
+const { code, lang } = Astro.props;
+---
+
+<div class="code-shell group">
+  <div class="code-shell__header">
+    <span class="code-shell__lang">{lang ?? ""}</span>
+    <button
+      type="button"
+      class="copy-btn inline-flex h-7 w-7 items-center justify-center rounded-md text-muted opacity-0 transition group-hover:opacity-100 hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]"
+      data-code={code}
+      aria-label="Copy"
+    >
+      <Icon name="lucide:copy" class="h-3.5 w-3.5 copy-icon" />
+      <Icon name="lucide:check" class="h-3.5 w-3.5 check-icon hidden" />
+    </button>
+  </div>
+  <pre class="code-shell__pre"><code>{code}</code></pre>
+</div>
+
+<script is:inline>
+  document.querySelectorAll(".copy-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const code = btn.getAttribute("data-code") || "";
+      try {
+        await navigator.clipboard.writeText(code);
+        btn.querySelector(".copy-icon")?.classList.add("hidden");
+        btn.querySelector(".check-icon")?.classList.remove("hidden");
+        setTimeout(() => {
+          btn.querySelector(".copy-icon")?.classList.remove("hidden");
+          btn.querySelector(".check-icon")?.classList.add("hidden");
+        }, 1500);
+      } catch (_) {}
+    });
+  });
+</script>

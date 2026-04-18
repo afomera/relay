@@ -1,0 +1,28 @@
+---
+import { Icon } from "astro-icon/components";
+const year = new Date().getFullYear();
+---
+
+<footer class="border-t border-subtle">
+  <div class="container-page flex flex-col items-start justify-between gap-4 py-8 text-sm text-muted sm:flex-row sm:items-center">
+    <p>&copy; {year} relay. MIT licensed.</p>
+    <div class="flex items-center gap-4">
+      <a
+        href="https://github.com/afomera/relay"
+        target="_blank"
+        rel="noopener"
+        class="inline-flex items-center gap-1.5 transition hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]"
+      >
+        <Icon name="lucide:github" class="h-4 w-4" />
+        <span>afomera/relay</span>
+      </a>
+      <a
+        href="/docs"
+        class="inline-flex items-center gap-1.5 transition hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]"
+      >
+        <Icon name="lucide:book-open" class="h-4 w-4" />
+        <span>Docs</span>
+      </a>
+    </div>
+  </div>
+</footer>

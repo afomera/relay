@@ -1,0 +1,54 @@
+---
+import { Icon } from "astro-icon/components";
+import ThemeToggle from "./ThemeToggle.astro";
+
+const path = Astro.url.pathname.replace(/\/$/, "") || "/";
+
+const links = [
+  { href: "/", label: "Home" },
+  { href: "/docs", label: "Docs" },
+];
+---
+
+<header class="border-b border-subtle">
+  <div class="container-page flex h-16 items-center justify-between gap-6">
+    <a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+      <span
+        class="inline-flex h-7 w-7 items-center justify-center rounded-md"
+        style="background-color: var(--color-accent-500); color: #1c1917;"
+      >
+        <Icon name="lucide:radio-tower" class="h-4 w-4" />
+      </span>
+      <span>relay</span>
+    </a>
+
+    <nav class="flex items-center gap-1">
+      {
+        links.map((l) => {
+          const active = l.href === "/" ? path === "/" : path.startsWith(l.href);
+          return (
+            <a
+              href={l.href}
+              class:list={[
+                "rounded-md px-3 py-1.5 text-sm transition",
+                active ? "text-[color:var(--color-accent-600)] dark:text-[color:var(--color-accent-400)]" : "text-muted hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]",
+              ]}
+            >
+              {l.label}
+            </a>
+          );
+        })
+      }
+      <a
+        href="https://github.com/afomera/relay"
+        target="_blank"
+        rel="noopener"
+        aria-label="GitHub"
+        class="ml-2 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted transition hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]"
+      >
+        <Icon name="lucide:github" class="h-4 w-4" />
+      </a>
+      <ThemeToggle />
+    </nav>
+  </div>
+</header>

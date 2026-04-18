@@ -1,0 +1,183 @@
+---
+import Layout from "../layouts/Layout.astro";
+import CodeBlock from "../components/CodeBlock.astro";
+import { Icon } from "astro-icon/components";
+
+const features = [
+  {
+    icon: "lucide:shield-check",
+    title: "Self-hostable",
+    body: "One binary, SQLite or Postgres, pluggable DNS provider for wildcard TLS. Own your tunnels.",
+  },
+  {
+    icon: "lucide:zap",
+    title: "QUIC under the hood",
+    body: "Tunnels ride over QUIC for low latency and resilient connections across flaky networks.",
+  },
+  {
+    icon: "lucide:globe",
+    title: "Hostnames that stick",
+    body: "Generated subdomains, reserved hostnames, wildcards, and your own custom domains.",
+  },
+  {
+    icon: "lucide:plug-zap",
+    title: "HTTP & raw TCP",
+    body: "Expose web services or raw TCP like Postgres, Redis, and SSH with a single command.",
+  },
+  {
+    icon: "lucide:box",
+    title: "Install via Homebrew or Cargo",
+    body: "Ship fast with `brew install` on macOS, or `cargo install` anywhere Rust runs.",
+  },
+  {
+    icon: "lucide:scroll-text",
+    title: "MIT licensed",
+    body: "Free and open source. Built in Rust. Use it, fork it, ship it.",
+  },
+];
+---
+
+<Layout>
+  <section class="container-page pt-20 pb-16 sm:pt-28 sm:pb-24">
+    <div class="flex flex-col items-start gap-6">
+      <span
+        class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+        style="border-color: var(--color-accent-500); color: var(--color-accent-600);"
+      >
+        <Icon name="lucide:sparkles" class="h-3.5 w-3.5" />
+        pre-alpha · built in Rust
+      </span>
+      <h1 class="text-4xl leading-tight tracking-tight sm:text-6xl sm:leading-[1.05] font-semibold">
+        Tunnels you can
+        <span style="color: var(--color-accent-500);">self-host.</span>
+      </h1>
+      <p class="max-w-2xl text-base sm:text-lg text-muted leading-relaxed">
+        Relay is a self-hostable tunneling service — a Rust-based alternative to ngrok.
+        Expose a local port to the internet over QUIC, with wildcard TLS and your own
+        hostnames.
+      </p>
+      <div class="mt-2 flex flex-wrap items-center gap-3">
+        <a href="/docs" class="btn btn-primary">
+          Get started
+          <Icon name="lucide:arrow-right" class="h-4 w-4" />
+        </a>
+        <a href="https://github.com/afomera/relay" target="_blank" rel="noopener" class="btn btn-ghost">
+          <Icon name="lucide:github" class="h-4 w-4" />
+          View on GitHub
+        </a>
+      </div>
+    </div>
+
+    <div class="mt-12 max-w-3xl">
+      <CodeBlock
+        lang="sh"
+        code={`brew tap afomera/relay https://github.com/afomera/relay.git
+brew install relay
+
+relay auth login --token rly_pat_...
+relay http 3000
+# → https://bright-otter.temporary.sharedwithrelay.com`}
+      />
+    </div>
+  </section>
+
+  <section class="border-t border-subtle">
+    <div class="container-page py-16 sm:py-20">
+      <div class="mb-10 flex items-end justify-between">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight">Why relay</h2>
+        <a href="/docs" class="link-accent text-sm inline-flex items-center gap-1">
+          Read the docs
+          <Icon name="lucide:arrow-right" class="h-3.5 w-3.5" />
+        </a>
+      </div>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {
+          features.map((f) => (
+            <div
+              class="rounded-lg border border-subtle p-5 transition hover:border-[color:var(--color-accent-500)]"
+              style="background-color: var(--bg-elevated);"
+            >
+              <div
+                class="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-md"
+                style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
+              >
+                <Icon name={f.icon} class="h-4.5 w-4.5" />
+              </div>
+              <h3 class="mb-1.5 font-semibold tracking-tight">{f.title}</h3>
+              <p class="text-sm text-muted leading-relaxed">{f.body}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="border-t border-subtle">
+    <div class="container-page py-16 sm:py-20">
+      <div class="grid gap-10 lg:grid-cols-2 lg:gap-16">
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight">
+            One command, you're online.
+          </h2>
+          <p class="mt-4 text-muted leading-relaxed">
+            Authenticate once, then point relay at any local port. Pick a generated
+            hostname, reserve one on the shared domain, or bring your own.
+          </p>
+          <ul class="mt-6 space-y-3 text-sm text-muted">
+            <li class="flex gap-3">
+              <Icon name="lucide:check" class="mt-1 h-4 w-4 shrink-0" style="color: var(--color-accent-500);" />
+              <span>Generated subdomains on the shared zone for ephemeral sharing.</span>
+            </li>
+            <li class="flex gap-3">
+              <Icon name="lucide:check" class="mt-1 h-4 w-4 shrink-0" style="color: var(--color-accent-500);" />
+              <span>Reserved wildcard hostnames like <code class="code-inline">api.andrea</code>.</span>
+            </li>
+            <li class="flex gap-3">
+              <Icon name="lucide:check" class="mt-1 h-4 w-4 shrink-0" style="color: var(--color-accent-500);" />
+              <span>Custom domains with automatic wildcard TLS.</span>
+            </li>
+            <li class="flex gap-3">
+              <Icon name="lucide:check" class="mt-1 h-4 w-4 shrink-0" style="color: var(--color-accent-500);" />
+              <span>Raw TCP on a shared ingress address.</span>
+            </li>
+          </ul>
+        </div>
+        <div class="space-y-3">
+          <CodeBlock lang="http" code={`relay http 3000
+# → https://bright-otter.temporary.sharedwithrelay.com`} />
+          <CodeBlock lang="wildcard" code={`relay http 3000 --hostname api.andrea
+# → https://api.andrea.sharedwithrelay.com`} />
+          <CodeBlock lang="domain" code={`relay http 3000 --domain tunnel.mycompany.com`} />
+          <CodeBlock lang="tcp" code={`relay tcp 5432
+# → tcp.sharedwithrelay.com:29734`} />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="border-t border-subtle">
+    <div class="container-page py-16 sm:py-20">
+      <div
+        class="rounded-xl border border-subtle p-8 sm:p-10"
+        style="background-color: var(--bg-elevated);"
+      >
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-semibold tracking-tight">Ready to start tunneling?</h2>
+            <p class="mt-2 text-muted">Install the CLI, drop in your auth token, and expose a port.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <a href="/docs" class="btn btn-primary">
+              Read the docs
+              <Icon name="lucide:arrow-right" class="h-4 w-4" />
+            </a>
+            <a href="https://github.com/afomera/relay" target="_blank" rel="noopener" class="btn btn-ghost">
+              <Icon name="lucide:github" class="h-4 w-4" />
+              GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>
