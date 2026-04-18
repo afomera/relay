@@ -22,10 +22,7 @@ pub struct EventBus {
 
 impl EventBus {
     pub fn new() -> Self {
-        Self {
-            tunnels: broadcast::channel(CAPACITY).0,
-            captures: broadcast::channel(CAPACITY).0,
-        }
+        Self { tunnels: broadcast::channel(CAPACITY).0, captures: broadcast::channel(CAPACITY).0 }
     }
 }
 

@@ -5,8 +5,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::connect_info::Connected;
 use axum::Router;
+use axum::extract::connect_info::Connected;
 use hyper_util::rt::TokioIo;
 use relay_proto::ALPN as QUIC_ALPN; // unused here — kept for dep tidiness
 use rustls::server::ResolvesServerCert;
@@ -33,9 +33,8 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
         None => Arc::new(StaticResolver::new(cfg.tls_cert.clone(), cfg.tls_key.clone_key())?) as _,
     };
 
-    let mut tls = rustls::ServerConfig::builder()
-        .with_no_client_auth()
-        .with_cert_resolver(resolver);
+    let mut tls =
+        rustls::ServerConfig::builder().with_no_client_auth().with_cert_resolver(resolver);
     tls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let acceptor = TlsAcceptor::from(Arc::new(tls));
 

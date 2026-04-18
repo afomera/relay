@@ -62,10 +62,11 @@ async fn fetch_user(db: &Db, id: Uuid) -> Result<Option<User>, DbError> {
 }
 
 async fn fetch_org(db: &Db, id: Uuid) -> Result<Option<Organization>, DbError> {
-    let row = relay_db::sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE id = ?")
-        .bind(id)
-        .fetch_optional(db.sqlite())
-        .await?;
+    let row =
+        relay_db::sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE id = ?")
+            .bind(id)
+            .fetch_optional(db.sqlite())
+            .await?;
     Ok(row)
 }
 
@@ -74,11 +75,7 @@ async fn fetch_org(db: &Db, id: Uuid) -> Result<Option<Organization>, DbError> {
 // ---------------------------------------------------------------------------
 
 pub fn start_github_login(state: &AppState, jar: PrivateCookieJar) -> (PrivateCookieJar, String) {
-    let github = state
-        .config
-        .github
-        .as_ref()
-        .expect("github oauth not configured");
+    let github = state.config.github.as_ref().expect("github oauth not configured");
     let state_nonce = Uuid::new_v4().to_string();
 
     let cookie = Cookie::build(("relay_oauth_state", state_nonce.clone()))
@@ -301,10 +298,7 @@ pub fn generate_token() -> (String /* plaintext */, String /* hashed */) {
 /// per call which is OK for our token volume.
 pub fn hash_token(plain: &str) -> String {
     let salt = SaltString::generate(&mut rand::thread_rng());
-    Argon2::default()
-        .hash_password(plain.as_bytes(), &salt)
-        .expect("hash")
-        .to_string()
+    Argon2::default().hash_password(plain.as_bytes(), &salt).expect("hash").to_string()
 }
 
 pub fn verify_token(plain: &str, hashed: &str) -> bool {

@@ -117,10 +117,10 @@ impl CaptureSink for DbCaptureSink {
         let _ = dao::touch_tunnel_last_seen(&self.db, c.tunnel_id).await;
         // Fanout to the tunnels stream so the home page's SSE subscription
         // can refresh last-seen without per-row capture subscriptions.
-        let _ = self.events.tunnels.send(TunnelLiveEvent::Touched {
-            tunnel_id: c.tunnel_id,
-            org_id: c.org_id,
-        });
+        let _ = self
+            .events
+            .tunnels
+            .send(TunnelLiveEvent::Touched { tunnel_id: c.tunnel_id, org_id: c.org_id });
         let _ = self.events.captures.send(CaptureLiveEvent {
             id,
             tunnel_id: c.tunnel_id,

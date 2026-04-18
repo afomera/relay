@@ -35,15 +35,13 @@ fn free_udp_port() -> u16 {
 async fn start_echo_server(port: u16) {
     let app = axum::Router::new()
         .route("/", get(|| async { "hello from local service" }))
-        .route(
-            "/echo",
-            post(|body: String| async move { format!("echoed: {body}") }),
-        )
+        .route("/echo", post(|body: String| async move { format!("echoed: {body}") }))
         .route(
             "/headers",
             get(|headers: axum::http::HeaderMap| async move {
                 let mut out = String::new();
-                let mut names: Vec<_> = headers.iter().map(|(k, _)| k.as_str().to_string()).collect();
+                let mut names: Vec<_> =
+                    headers.iter().map(|(k, _)| k.as_str().to_string()).collect();
                 names.sort();
                 for name in names {
                     if let Some(v) = headers.get(&name).and_then(|v| v.to_str().ok()) {
@@ -70,11 +68,7 @@ async fn http_tunnel_end_to_end() {
     let quic_port = free_udp_port();
     let base = "localhost.relay.test".to_string();
 
-    let sans = vec![
-        base.clone(),
-        format!("*.{base}"),
-        format!("*.temporary.{base}"),
-    ];
+    let sans = vec![base.clone(), format!("*.{base}"), format!("*.temporary.{base}")];
     let (cert, key) = generate_dev_cert(&sans).unwrap();
     let cfg = EdgeConfig {
         bind_quic: format!("127.0.0.1:{quic_port}").parse().unwrap(),
@@ -112,7 +106,8 @@ async fn http_tunnel_end_to_end() {
     tp.keep_alive_interval(Some(Duration::from_secs(10)));
     cc.transport_config(Arc::new(tp));
 
-    let mut endpoint = quinn::Endpoint::client("127.0.0.1:0".parse::<SocketAddr>().unwrap()).unwrap();
+    let mut endpoint =
+        quinn::Endpoint::client("127.0.0.1:0".parse::<SocketAddr>().unwrap()).unwrap();
     endpoint.set_default_client_config(cc);
 
     let server_addr: SocketAddr = format!("127.0.0.1:{quic_port}").parse().unwrap();

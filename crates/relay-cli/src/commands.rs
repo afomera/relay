@@ -28,7 +28,10 @@ pub mod auth {
             }
             AuthCmd::Status => {
                 if cfg.token.is_some() {
-                    println!("logged in; server = {}", cfg.server.as_deref().unwrap_or("<default>"));
+                    println!(
+                        "logged in; server = {}",
+                        cfg.server.as_deref().unwrap_or("<default>")
+                    );
                 } else {
                     println!("no token configured");
                 }
@@ -86,10 +89,7 @@ pub mod http {
                     if desired.is_none() {
                         desired = assigned;
                     }
-                    eprintln!(
-                        "connection lost; reconnecting in {}s…",
-                        backoff.as_secs().max(1)
-                    );
+                    eprintln!("connection lost; reconnecting in {}s…", backoff.as_secs().max(1));
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(Duration::from_secs(30));
                 }
@@ -97,10 +97,7 @@ pub mod http {
                     if !reconnect {
                         return Err(e);
                     }
-                    eprintln!(
-                        "connect failed: {e}; retrying in {}s…",
-                        backoff.as_secs().max(1)
-                    );
+                    eprintln!("connect failed: {e}; retrying in {}s…", backoff.as_secs().max(1));
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(Duration::from_secs(30));
                 }
@@ -114,21 +111,18 @@ pub mod http {
         desired: Option<String>,
         inspect: bool,
     ) -> anyhow::Result<(Outcome, Option<String>)> {
-        let server_name =
-            ctx.server.split(':').next().unwrap_or("localhost").to_string();
+        let server_name = ctx.server.split(':').next().unwrap_or("localhost").to_string();
 
         let server_addr = ctx.server.to_socket_addrs_first()?;
         let client_cfg = tls::build_client_config(ctx.insecure, ctx.cafile.as_deref())?;
-        let quic_client =
-            quinn::crypto::rustls::QuicClientConfig::try_from((*client_cfg).clone())?;
+        let quic_client = quinn::crypto::rustls::QuicClientConfig::try_from((*client_cfg).clone())?;
         let mut quic_cfg = quinn::ClientConfig::new(Arc::new(quic_client));
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(Duration::from_secs(30).try_into()?));
         transport.keep_alive_interval(Some(Duration::from_secs(10)));
         quic_cfg.transport_config(Arc::new(transport));
 
-        let mut endpoint =
-            quinn::Endpoint::client("0.0.0.0:0".parse::<std::net::SocketAddr>()?)?;
+        let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse::<std::net::SocketAddr>()?)?;
         endpoint.set_default_client_config(quic_cfg);
 
         let conn = endpoint.connect(server_addr, &server_name)?.await?;
@@ -290,16 +284,14 @@ pub mod tcp {
         let server_name = ctx.server.split(':').next().unwrap_or("localhost").to_string();
         let server_addr = ctx.server.to_socket_addrs_first()?;
         let client_cfg = tls::build_client_config(ctx.insecure, ctx.cafile.as_deref())?;
-        let quic_client =
-            quinn::crypto::rustls::QuicClientConfig::try_from((*client_cfg).clone())?;
+        let quic_client = quinn::crypto::rustls::QuicClientConfig::try_from((*client_cfg).clone())?;
         let mut quic_cfg = quinn::ClientConfig::new(Arc::new(quic_client));
         let mut transport = quinn::TransportConfig::default();
         transport.max_idle_timeout(Some(std::time::Duration::from_secs(30).try_into()?));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(10)));
         quic_cfg.transport_config(Arc::new(transport));
 
-        let mut endpoint =
-            quinn::Endpoint::client("0.0.0.0:0".parse::<std::net::SocketAddr>()?)?;
+        let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse::<std::net::SocketAddr>()?)?;
         endpoint.set_default_client_config(quic_cfg);
         let conn = endpoint.connect(server_addr, &server_name)?.await?;
         let (mut send, mut recv) = conn.open_bi().await?;

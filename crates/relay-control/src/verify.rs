@@ -25,15 +25,12 @@ pub enum VerifyError {
 pub async fn verify_txt(hostname: &str, expected: &str) -> Result<(), VerifyError> {
     let record = format!("{TXT_PREFIX}{hostname}");
     let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
-    let lookup = resolver
-        .txt_lookup(&record)
-        .await
-        .map_err(|e| match e.kind() {
-            hickory_resolver::error::ResolveErrorKind::NoRecordsFound { .. } => {
-                VerifyError::Missing(record.clone())
-            }
-            _ => VerifyError::Lookup(e.to_string()),
-        })?;
+    let lookup = resolver.txt_lookup(&record).await.map_err(|e| match e.kind() {
+        hickory_resolver::error::ResolveErrorKind::NoRecordsFound { .. } => {
+            VerifyError::Missing(record.clone())
+        }
+        _ => VerifyError::Lookup(e.to_string()),
+    })?;
 
     let expected_bytes = expected.as_bytes();
     for rdata in lookup.iter() {

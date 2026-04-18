@@ -81,8 +81,7 @@ async fn handle_inner(
 
     // Dashboard: if the request is for the configured admin hostname, hand
     // it to the control-plane router. Same process, no internal HTTP hop.
-    if let (Some(admin_host), Some(router)) = (&state.cfg.admin_hostname, &state.cfg.admin_router)
-    {
+    if let (Some(admin_host), Some(router)) = (&state.cfg.admin_hostname, &state.cfg.admin_router) {
         if host.eq_ignore_ascii_case(admin_host) {
             use tower::ServiceExt;
             let svc = router.clone();
@@ -106,11 +105,8 @@ async fn handle_inner(
     let started_at = time::OffsetDateTime::now_utc().unix_timestamp();
     let started_instant = std::time::Instant::now();
     let method_str = req.method().to_string();
-    let path_str = req
-        .uri()
-        .path_and_query()
-        .map(|p| p.to_string())
-        .unwrap_or_else(|| "/".to_string());
+    let path_str =
+        req.uri().path_and_query().map(|p| p.to_string()).unwrap_or_else(|| "/".to_string());
     let req_headers = collect_headers(req.headers());
 
     let header = HttpRequestHeader {
@@ -127,8 +123,17 @@ async fn handle_inner(
     // Two paths: inspected (buffer + capture) and streaming (existing).
     if handle.inspect {
         return inspected_path(
-            state, handle, send, recv, req, request_id, started_at, started_instant, method_str,
-            path_str, req_headers,
+            state,
+            handle,
+            send,
+            recv,
+            req,
+            request_id,
+            started_at,
+            started_instant,
+            method_str,
+            path_str,
+            req_headers,
         )
         .await;
     }
@@ -284,8 +289,14 @@ fn collect_headers(h: &HeaderMap) -> Vec<(String, String)> {
 fn is_ingress_hop_by_hop(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
-        "connection" | "keep-alive" | "transfer-encoding" | "upgrade" | "proxy-authenticate"
-        | "proxy-authorization" | "te" | "trailer"
+        "connection"
+            | "keep-alive"
+            | "transfer-encoding"
+            | "upgrade"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
     )
 }
 

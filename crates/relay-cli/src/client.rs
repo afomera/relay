@@ -7,9 +7,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 pub async fn accept_and_proxy(conn: quinn::Connection, local_port: u16) -> anyhow::Result<()> {
-    let http_client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()?;
+    let http_client =
+        reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build()?;
 
     loop {
         let (send, recv) = match conn.accept_bi().await {
@@ -66,7 +65,11 @@ async fn proxy_tcp(
         loop {
             match recv.read(&mut buf).await {
                 Ok(Some(0)) => break,
-                Ok(Some(n)) => if tcp_w.write_all(&buf[..n]).await.is_err() { break; },
+                Ok(Some(n)) => {
+                    if tcp_w.write_all(&buf[..n]).await.is_err() {
+                        break;
+                    }
+                }
                 Ok(None) => break,
                 Err(_) => break,
             }
@@ -80,7 +83,11 @@ async fn proxy_tcp(
                     let _ = send.finish();
                     break;
                 }
-                Ok(n) => if send.write_all(&buf[..n]).await.is_err() { break; },
+                Ok(n) => {
+                    if send.write_all(&buf[..n]).await.is_err() {
+                        break;
+                    }
+                }
                 Err(_) => break,
             }
         }

@@ -1,10 +1,10 @@
 //! HTTP routes for the control plane.
 
+use axum::Router;
 use axum::extract::{Form, Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use axum::Router;
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar};
 use relay_db::sqlite as dao;
 use serde::Deserialize;
@@ -15,13 +15,12 @@ use futures::stream::Stream;
 use std::convert::Infallible;
 
 use crate::auth::{
-    complete_github_login, generate_token, require_auth, start_github_login, AuthedUser,
-    GithubCallback, SESSION_COOKIE,
+    AuthedUser, GithubCallback, SESSION_COOKIE, complete_github_login, generate_token,
+    require_auth, start_github_login,
 };
 use crate::state::AppState;
 use crate::templates::{
-    CapturePage, DomainsPage, HomePage, LoginPage, OrgCtx, ReservationsPage, TokensPage,
-    TunnelPage,
+    CapturePage, DomainsPage, HomePage, LoginPage, OrgCtx, ReservationsPage, TokensPage, TunnelPage,
 };
 
 pub fn router(state: AppState) -> Router {
@@ -79,8 +78,7 @@ async fn sse_tunnel_captures(
     Path(tunnel_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, Response> {
     let AuthedUser { org, .. } = require_auth(&state, &jar).await?;
-    let Some(tunnel) =
-        dao::find_tunnel_for_org(&state.db, org.id, tunnel_id).await.ok().flatten()
+    let Some(tunnel) = dao::find_tunnel_for_org(&state.db, org.id, tunnel_id).await.ok().flatten()
     else {
         return Err((StatusCode::NOT_FOUND, "tunnel not found").into_response());
     };
@@ -212,17 +210,12 @@ async fn capture_detail(
         return (StatusCode::NOT_FOUND, "capture not found").into_response();
     }
     let req_headers = crate::templates::parse_headers_json(&capture.req_headers_json);
-    let resp_headers = crate::templates::parse_headers_json(
-        capture.resp_headers_json.as_deref().unwrap_or("[]"),
-    );
-    let req_body = crate::templates::classify_body(
-        &req_headers,
-        capture.req_body.as_deref().unwrap_or(&[]),
-    );
-    let resp_body = crate::templates::classify_body(
-        &resp_headers,
-        capture.resp_body.as_deref().unwrap_or(&[]),
-    );
+    let resp_headers =
+        crate::templates::parse_headers_json(capture.resp_headers_json.as_deref().unwrap_or("[]"));
+    let req_body =
+        crate::templates::classify_body(&req_headers, capture.req_body.as_deref().unwrap_or(&[]));
+    let resp_body =
+        crate::templates::classify_body(&resp_headers, capture.resp_body.as_deref().unwrap_or(&[]));
     CapturePage {
         ctx: OrgCtx::from(&user, &org),
         nav: "tunnels",
@@ -241,11 +234,8 @@ async fn capture_detail(
 // ---------------------------------------------------------------------------
 
 async fn login(State(state): State<AppState>) -> Response {
-    LoginPage {
-        github_enabled: state.config.github.is_some(),
-        dev_enabled: state.config.dev_mode,
-    }
-    .into_response()
+    LoginPage { github_enabled: state.config.github.is_some(), dev_enabled: state.config.dev_mode }
+        .into_response()
 }
 
 /// Dev-only: create-or-reuse a `dev@local` user, set a session cookie,
@@ -272,9 +262,12 @@ async fn dev_login(State(state): State<AppState>, jar: PrivateCookieJar) -> Resp
         _ => {
             let org = match dao::create_org(&state.db, "Dev workspace", "dev").await {
                 Ok(o) => o,
-                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+                Err(e) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+                }
             };
-            let _ = dao::add_org_member(&state.db, org.id, user.id, relay_db::models::Role::Owner).await;
+            let _ = dao::add_org_member(&state.db, org.id, user.id, relay_db::models::Role::Owner)
+                .await;
             org
         }
     };
@@ -292,10 +285,7 @@ async fn dev_login(State(state): State<AppState>, jar: PrivateCookieJar) -> Resp
     (jar, Redirect::to("/")).into_response()
 }
 
-async fn github_start(
-    State(state): State<AppState>,
-    jar: PrivateCookieJar,
-) -> impl IntoResponse {
+async fn github_start(State(state): State<AppState>, jar: PrivateCookieJar) -> impl IntoResponse {
     let (jar, url) = start_github_login(&state, jar);
     (jar, Redirect::to(&url))
 }

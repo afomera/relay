@@ -8,11 +8,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use relay_db::sqlite as dao;
 use relay_db::Db;
+use relay_db::sqlite as dao;
 use relay_dns::DnsProvider;
 
-use crate::issue::{issue_wildcard, IssueOptions};
+use crate::issue::{IssueOptions, issue_wildcard};
 use crate::store::CertStore;
 
 pub struct RenewalWorker {
@@ -29,7 +29,10 @@ impl RenewalWorker {
     /// renewal loop.
     pub async fn run(self) -> anyhow::Result<()> {
         if let Err(e) = self.tick().await {
-            tracing::warn!(?e, "initial renewal tick failed — HTTPS will use the self-signed fallback until the next attempt");
+            tracing::warn!(
+                ?e,
+                "initial renewal tick failed — HTTPS will use the self-signed fallback until the next attempt"
+            );
         }
         let mut ticker = tokio::time::interval(Duration::from_secs(60 * 60));
         ticker.tick().await; // consume the immediate firing

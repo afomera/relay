@@ -57,7 +57,11 @@ fn try_run(prefix: &[&str], input: &Path, output: &Path) -> bool {
     c.args(["-i", input.to_str().unwrap(), "-o", output.to_str().unwrap(), "--minify"]);
     match c.status() {
         Ok(s) if s.success() => {
-            println!("cargo:warning=tailwind ({}) regenerated {}", prefix.join(" "), output.display());
+            println!(
+                "cargo:warning=tailwind ({}) regenerated {}",
+                prefix.join(" "),
+                output.display()
+            );
             true
         }
         Ok(s) => {

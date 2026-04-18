@@ -13,17 +13,18 @@ use std::sync::Arc;
 use base64::Engine as _;
 use clap::Parser;
 use rand::RngCore;
-use relay_control::{ControlConfig, DbAuthProvider, DbCaptureSink, DbReservationStore, DbTunnelRecorder, AppState, CertIssuerCtx, EventBus};
-use relay_control::config::GithubOauthConfig;
-use relay_db::Db;
-use relay_edge::{
-    EdgeConfig, generate_dev_cert, start as start_edge,
-};
 use relay_acme::{
-    DbCertStore, CertResolver, Http01Pending, RenewalWorker, issue::IssueOptions, CertStore,
+    CertResolver, CertStore, DbCertStore, Http01Pending, RenewalWorker, issue::IssueOptions,
 };
+use relay_control::config::GithubOauthConfig;
+use relay_control::{
+    AppState, CertIssuerCtx, ControlConfig, DbAuthProvider, DbCaptureSink, DbReservationStore,
+    DbTunnelRecorder, EventBus,
+};
+use relay_db::Db;
 use relay_dns::DnsProvider;
 use relay_dns::cloudflare::CloudflareProvider;
+use relay_edge::{EdgeConfig, generate_dev_cert, start as start_edge};
 use serde::Deserialize;
 
 #[derive(Parser)]
@@ -161,20 +162,16 @@ async fn main() -> anyhow::Result<()> {
     if args.dev {
         run_dev(args).await
     } else {
-        let cfg_path = args
-            .config
-            .ok_or_else(|| anyhow::anyhow!("--config PATH or --dev is required"))?;
+        let cfg_path =
+            args.config.ok_or_else(|| anyhow::anyhow!("--config PATH or --dev is required"))?;
         run_from_config(&cfg_path).await
     }
 }
 
 async fn run_dev(args: Args) -> anyhow::Result<()> {
     let temporary = format!("temporary.{}", args.base_domain);
-    let sans = vec![
-        args.base_domain.clone(),
-        format!("*.{}", args.base_domain),
-        format!("*.{temporary}"),
-    ];
+    let sans =
+        vec![args.base_domain.clone(), format!("*.{}", args.base_domain), format!("*.{temporary}")];
     let (cert, key) = generate_dev_cert(&sans)?;
 
     // Open SQLite, run migrations.
@@ -267,8 +264,9 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
     let file = fs::read_to_string(path)?;
     let cfg: FileConfig = toml::from_str(&file)?;
 
-    let data_key = std::env::var(&cfg.security.data_key_env)
-        .map_err(|_| anyhow::anyhow!("RELAY_DATA_KEY env var `{}` not set", cfg.security.data_key_env))?;
+    let data_key = std::env::var(&cfg.security.data_key_env).map_err(|_| {
+        anyhow::anyhow!("RELAY_DATA_KEY env var `{}` not set", cfg.security.data_key_env)
+    })?;
 
     // Validate the data key decodes to at least 32 bytes; fail fast with a
     // clear message rather than later inside AppState::new.
@@ -276,7 +274,11 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         .decode(&data_key)
         .map_err(|e| anyhow::anyhow!("{} is not base64: {e}", cfg.security.data_key_env))?;
     if decoded.len() < 32 {
-        anyhow::bail!("{} must decode to >= 32 bytes (got {})", cfg.security.data_key_env, decoded.len());
+        anyhow::bail!(
+            "{} must decode to >= 32 bytes (got {})",
+            cfg.security.data_key_env,
+            decoded.len()
+        );
     }
 
     let db = Db::connect(&cfg.db.url).await?;
@@ -288,10 +290,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
     let github = match cfg.github_oauth {
         Some(g) => {
             let secret = std::env::var(&g.client_secret_env).map_err(|_| {
-                anyhow::anyhow!(
-                    "github oauth client_secret env `{}` not set",
-                    g.client_secret_env
-                )
+                anyhow::anyhow!("github oauth client_secret env `{}` not set", g.client_secret_env)
             })?;
             let mut cfg_oauth = GithubOauthConfig::new(g.client_id, secret);
             cfg_oauth.allowed_orgs = g.allowed_orgs;
@@ -305,7 +304,8 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         }
         None => None,
     };
-    let temporary = cfg.domains.temporary.unwrap_or_else(|| format!("temporary.{}", cfg.domains.base));
+    let temporary =
+        cfg.domains.temporary.unwrap_or_else(|| format!("temporary.{}", cfg.domains.base));
     let control_cfg = ControlConfig {
         bind_admin: cfg.server.bind_admin,
         base_domain: cfg.domains.base.clone(),
@@ -326,11 +326,8 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
     // The self-signed cert below is the *fallback* the resolver uses until the
     // ACME-issued wildcard lands in the store. Browsers will get a cert warning
     // during the ~30-second first-issue window; after that the real cert wins.
-    let sans = vec![
-        cfg.domains.base.clone(),
-        format!("*.{}", cfg.domains.base),
-        format!("*.{temporary}"),
-    ];
+    let sans =
+        vec![cfg.domains.base.clone(), format!("*.{}", cfg.domains.base), format!("*.{temporary}")];
     let (cert, key) = generate_dev_cert(&sans)?;
 
     let data_key_bytes = relay_acme::encrypt::decode_data_key(&data_key)
@@ -366,8 +363,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
     });
 
     // Spawn control plane now that we have the cert issuer.
-    let control_state =
-        AppState::new(control_cfg, db.clone(), events.clone(), cert_issuer.clone());
+    let control_state = AppState::new(control_cfg, db.clone(), events.clone(), cert_issuer.clone());
     let admin_router = relay_control::build_router(control_state.clone());
     let control_task = tokio::spawn(async move {
         let bind = control_state.config.bind_admin;

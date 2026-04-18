@@ -145,7 +145,8 @@ async fn control_loop(
         match msg {
             ClientMsg::Hello(_) => anyhow::bail!("unexpected second Hello"),
             ClientMsg::Register(req) => {
-                handle_register(conn, send, cfg, reg, principal, req, bound, pool, tcp_listeners).await?;
+                handle_register(conn, send, cfg, reg, principal, req, bound, pool, tcp_listeners)
+                    .await?;
             }
             ClientMsg::Unregister { tunnel_id } => {
                 // Find and drop by tunnel_id. O(n) — fine, n is small per connection.
@@ -179,7 +180,8 @@ async fn handle_register(
     match req.kind {
         TunnelKind::Http => {}
         TunnelKind::Tcp => {
-            return handle_tcp_register(conn, send, cfg, reg, principal, req, pool, tcp_listeners).await;
+            return handle_tcp_register(conn, send, cfg, reg, principal, req, pool, tcp_listeners)
+                .await;
         }
         TunnelKind::TlsPassthrough => {
             reject(send, req.req_id, "tls-passthrough lands in a future release".into()).await?;
@@ -307,7 +309,8 @@ async fn handle_tcp_register(
     let cfg_cl = cfg.clone();
     let conn_cl = conn.clone();
     tokio::spawn(async move {
-        if let Err(e) = crate::tcp::run_listener(cfg_cl, tunnel_id, conn_cl, port, cancel_rx).await {
+        if let Err(e) = crate::tcp::run_listener(cfg_cl, tunnel_id, conn_cl, port, cancel_rx).await
+        {
             tracing::warn!(?e, port, "tcp listener exited");
         }
     });

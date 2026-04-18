@@ -58,7 +58,13 @@ pub async fn upsert_github_user(
             .bind(u.id)
             .execute(pool(db))
             .await?;
-        return Ok(User { login: login.to_string(), email: email.map(str::to_string), name: name.map(str::to_string), avatar_url: avatar_url.map(str::to_string), ..u });
+        return Ok(User {
+            login: login.to_string(),
+            email: email.map(str::to_string),
+            name: name.map(str::to_string),
+            avatar_url: avatar_url.map(str::to_string),
+            ..u
+        });
     }
     let id = Uuid::new_v4();
     let now = now_unix();
@@ -73,7 +79,15 @@ pub async fn upsert_github_user(
         .execute(pool(db))
         .await
         .map_err(map_sqlx_err)?;
-    Ok(User { id, github_id, login: login.to_string(), email: email.map(str::to_string), name: name.map(str::to_string), avatar_url: avatar_url.map(str::to_string), created_at: now })
+    Ok(User {
+        id,
+        github_id,
+        login: login.to_string(),
+        email: email.map(str::to_string),
+        name: name.map(str::to_string),
+        avatar_url: avatar_url.map(str::to_string),
+        created_at: now,
+    })
 }
 
 pub async fn add_org_member(
@@ -109,34 +123,39 @@ pub async fn primary_org_for_user(db: &Db, user_id: Uuid) -> Result<Option<Organ
 // sessions
 // ---------------------------------------------------------------------------
 
-pub async fn create_session(db: &Db, user_id: Uuid, org_id: Uuid, ttl_secs: i64) -> Result<Uuid, DbError> {
+pub async fn create_session(
+    db: &Db,
+    user_id: Uuid,
+    org_id: Uuid,
+    ttl_secs: i64,
+) -> Result<Uuid, DbError> {
     let id = Uuid::new_v4();
     let now = now_unix();
-    sqlx::query("INSERT INTO sessions (id, user_id, org_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(id)
-        .bind(user_id)
-        .bind(org_id)
-        .bind(now + ttl_secs)
-        .bind(now)
-        .execute(pool(db))
-        .await?;
+    sqlx::query(
+        "INSERT INTO sessions (id, user_id, org_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(org_id)
+    .bind(now + ttl_secs)
+    .bind(now)
+    .execute(pool(db))
+    .await?;
     Ok(id)
 }
 
 pub async fn lookup_session(db: &Db, id: Uuid) -> Result<Option<Session>, DbError> {
-    let row = sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE id = ? AND expires_at > ?")
-        .bind(id)
-        .bind(now_unix())
-        .fetch_optional(pool(db))
-        .await?;
+    let row =
+        sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE id = ? AND expires_at > ?")
+            .bind(id)
+            .bind(now_unix())
+            .fetch_optional(pool(db))
+            .await?;
     Ok(row)
 }
 
 pub async fn delete_session(db: &Db, id: Uuid) -> Result<(), DbError> {
-    sqlx::query("DELETE FROM sessions WHERE id = ?")
-        .bind(id)
-        .execute(pool(db))
-        .await?;
+    sqlx::query("DELETE FROM sessions WHERE id = ?").bind(id).execute(pool(db)).await?;
     Ok(())
 }
 
@@ -201,9 +220,8 @@ pub async fn find_token_by_hash(db: &Db, hashed: &str) -> Result<Option<ApiToken
 pub async fn list_all_api_tokens(db: &Db) -> Result<Vec<ApiToken>, DbError> {
     // Used by the edge auth provider. See `DbAuthProvider` for why this exists
     // as a full-scan method.
-    let rows = sqlx::query_as::<_, ApiToken>("SELECT * FROM api_tokens")
-        .fetch_all(pool(db))
-        .await?;
+    let rows =
+        sqlx::query_as::<_, ApiToken>("SELECT * FROM api_tokens").fetch_all(pool(db)).await?;
     Ok(rows)
 }
 
@@ -220,7 +238,11 @@ pub async fn touch_token_use(db: &Db, id: Uuid) -> Result<(), DbError> {
 // reservations
 // ---------------------------------------------------------------------------
 
-pub async fn create_reservation(db: &Db, org_id: Uuid, label: &str) -> Result<Reservation, DbError> {
+pub async fn create_reservation(
+    db: &Db,
+    org_id: Uuid,
+    label: &str,
+) -> Result<Reservation, DbError> {
     let id = Uuid::new_v4();
     let now = now_unix();
     sqlx::query("INSERT INTO reservations (id, org_id, label, created_at) VALUES (?, ?, ?, ?)")
@@ -285,13 +307,12 @@ pub async fn upsert_tunnel_by_hostname(
     let labels_json = serde_json::to_string(labels)?;
     let now = now_unix();
 
-    let existing: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM tunnels WHERE org_id = ? AND hostname = ?",
-    )
-    .bind(org_id)
-    .bind(hostname)
-    .fetch_optional(pool(db))
-    .await?;
+    let existing: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM tunnels WHERE org_id = ? AND hostname = ?")
+            .bind(org_id)
+            .bind(hostname)
+            .fetch_optional(pool(db))
+            .await?;
 
     if let Some(id) = existing {
         sqlx::query(
@@ -374,10 +395,12 @@ pub async fn mark_tunnel_disconnected(db: &Db, id: Uuid) -> Result<(), DbError> 
 /// rows left over from a previous (possibly crashed) process don't show up as
 /// live in the dashboard.
 pub async fn mark_all_tunnels_disconnected(db: &Db) -> Result<u64, DbError> {
-    let res = sqlx::query("UPDATE tunnels SET state = 'disconnected', last_seen_at = ? WHERE state = 'active'")
-        .bind(now_unix())
-        .execute(pool(db))
-        .await?;
+    let res = sqlx::query(
+        "UPDATE tunnels SET state = 'disconnected', last_seen_at = ? WHERE state = 'active'",
+    )
+    .bind(now_unix())
+    .execute(pool(db))
+    .await?;
     Ok(res.rows_affected())
 }
 
@@ -416,7 +439,15 @@ pub async fn create_custom_domain(
         .execute(pool(db))
         .await
         .map_err(map_sqlx_err)?;
-    Ok(CustomDomain { id, org_id, hostname: hostname.to_string(), verification_token: verification_token.to_string(), verified_at: None, cert_id: None, created_at: now })
+    Ok(CustomDomain {
+        id,
+        org_id,
+        hostname: hostname.to_string(),
+        verification_token: verification_token.to_string(),
+        verified_at: None,
+        cert_id: None,
+        created_at: now,
+    })
 }
 
 pub async fn list_custom_domains(db: &Db, org_id: Uuid) -> Result<Vec<CustomDomain>, DbError> {
@@ -497,8 +528,9 @@ pub async fn latest_cert_for(db: &Db, hostname: &str) -> Result<Option<Cert>, Db
 }
 
 pub async fn list_all_certs(db: &Db) -> Result<Vec<Cert>, DbError> {
-    let rows =
-        sqlx::query_as::<_, Cert>("SELECT * FROM certs ORDER BY not_after ASC").fetch_all(pool(db)).await?;
+    let rows = sqlx::query_as::<_, Cert>("SELECT * FROM certs ORDER BY not_after ASC")
+        .fetch_all(pool(db))
+        .await?;
     Ok(rows)
 }
 
@@ -592,6 +624,7 @@ pub async fn insert_capture(
     Ok(id)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn complete_capture(
     db: &Db,
     id: Uuid,
@@ -637,10 +670,11 @@ pub async fn list_captures(
 }
 
 pub async fn get_capture(db: &Db, id: Uuid) -> Result<Option<InspectionCapture>, DbError> {
-    let row = sqlx::query_as::<_, InspectionCapture>("SELECT * FROM inspection_captures WHERE id = ?")
-        .bind(id)
-        .fetch_optional(pool(db))
-        .await?;
+    let row =
+        sqlx::query_as::<_, InspectionCapture>("SELECT * FROM inspection_captures WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool(db))
+            .await?;
     Ok(row)
 }
 

@@ -5,8 +5,8 @@
 //! typed stubs — the trait surface is the same so swapping is drop-in.
 
 pub mod cloudflare;
-pub mod route53;
 pub mod rfc2136;
+pub mod route53;
 
 use async_trait::async_trait;
 

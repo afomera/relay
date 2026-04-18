@@ -91,12 +91,7 @@ impl DnsProvider for CloudflareProvider {
             return Ok(());
         };
         let url = self.url(&format!("/dns_records/{id}"));
-        self.client
-            .delete(&url)
-            .bearer_auth(&self.api_token)
-            .send()
-            .await?
-            .error_for_status()?;
+        self.client.delete(&url).bearer_auth(&self.api_token).send().await?.error_for_status()?;
         Ok(())
     }
 }
