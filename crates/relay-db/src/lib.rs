@@ -30,8 +30,6 @@ pub enum DbError {
     NotFound,
     #[error("unique violation: {0}")]
     UniqueViolation(String),
-    #[error("postgres support not implemented in this build")]
-    PostgresUnsupported,
 }
 
 #[derive(Clone)]
@@ -41,15 +39,13 @@ pub enum Db {
 
 impl Db {
     /// Connect based on the URL scheme. Supports `sqlite:<path>` / `sqlite::memory:`.
-    /// Postgres (`postgres:`, `postgresql:`) returns `PostgresUnsupported`.
+    /// Postgres support is added in a follow-up commit.
     pub async fn connect(url: &str) -> Result<Self, DbError> {
         if url.starts_with("sqlite:") {
             let opts: SqliteConnectOptions = url.parse()?;
             let opts = opts.create_if_missing(true).foreign_keys(true);
             let pool = SqlitePoolOptions::new().max_connections(10).connect_with(opts).await?;
             Ok(Self::Sqlite(pool))
-        } else if url.starts_with("postgres:") || url.starts_with("postgresql:") {
-            Err(DbError::PostgresUnsupported)
         } else {
             Err(DbError::Sql(sqlx::Error::Configuration(
                 format!("unrecognised db url: {url}").into(),
@@ -78,16 +74,18 @@ impl Db {
     }
 }
 
-/// Map sqlx "UNIQUE constraint failed" into our domain error.
+/// Map sqlx errors into our domain error using the typed driver API — works
+/// across SQLite and Postgres without string-sniffing the message.
 pub fn map_sqlx_err(e: sqlx::Error) -> DbError {
-    let s = format!("{e}");
-    if s.contains("UNIQUE constraint failed") || s.contains("duplicate key") {
-        DbError::UniqueViolation(s)
-    } else if matches!(e, sqlx::Error::RowNotFound) {
-        DbError::NotFound
-    } else {
-        DbError::Sql(e)
+    if matches!(e, sqlx::Error::RowNotFound) {
+        return DbError::NotFound;
     }
+    if let Some(db_err) = e.as_database_error() {
+        if db_err.is_unique_violation() {
+            return DbError::UniqueViolation(db_err.message().to_string());
+        }
+    }
+    DbError::Sql(e)
 }
 
 pub fn now_unix() -> i64 {

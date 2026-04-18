@@ -76,8 +76,13 @@ pub async fn issue_wildcard(
     // authorize a wildcard via DNS-01 at `_acme-challenge.<base>` (the
     // `*.` is stripped for the challenge name). The CSR SANs must then
     // match the order identifiers exactly, so we keep the wildcard form
-    // throughout.
-    let mut idents = vec![Identifier::Dns(format!("*.{}", opts.base_domain))];
+    // throughout. We also include the apex (`base_domain`) because a
+    // wildcard does not cover it — without this SAN, `https://<base>/`
+    // falls back to the self-signed cert.
+    let mut idents = vec![
+        Identifier::Dns(format!("*.{}", opts.base_domain)),
+        Identifier::Dns(opts.base_domain.clone()),
+    ];
     if let Some(eph) = &opts.temporary_label {
         idents.push(Identifier::Dns(format!("*.{eph}.{}", opts.base_domain)));
     }
