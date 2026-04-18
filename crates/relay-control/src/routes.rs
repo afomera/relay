@@ -318,8 +318,11 @@ async fn github_callback(
 
 #[derive(Deserialize)]
 struct CliAuthorizeQuery {
-    callback: String,
-    state: String,
+    // Optional because after a login detour the GitHub callback redirects
+    // here with no query string — we then restore callback+state from the
+    // pending cookie.
+    callback: Option<String>,
+    state: Option<String>,
 }
 
 /// Only accept loopback callbacks. Anything else risks handing a token to a
@@ -344,12 +347,27 @@ async fn cli_authorize(
     jar: PrivateCookieJar,
     axum::extract::Query(q): axum::extract::Query<CliAuthorizeQuery>,
 ) -> Response {
-    if let Err(reason) = validate_loopback_callback(&q.callback) {
+    // Resolve callback+state: prefer the URL query (fresh entry), fall back
+    // to the pending cookie (post-login detour — GitHub's callback lands us
+    // back here with no query string).
+    let (callback, cli_state) = match (q.callback, q.state) {
+        (Some(cb), Some(st)) => (cb, st),
+        _ => match jar.get(CLI_RETURN_COOKIE).map(|c| c.value().to_string()) {
+            Some(raw) => match raw.split_once('\n') {
+                Some((cb, st)) => (cb.to_string(), st.to_string()),
+                None => {
+                    return (StatusCode::BAD_REQUEST, "malformed pending CLI cookie")
+                        .into_response();
+                }
+            },
+            None => return (StatusCode::BAD_REQUEST, "missing callback + state").into_response(),
+        },
+    };
+    if let Err(reason) = validate_loopback_callback(&callback) {
         return (StatusCode::BAD_REQUEST, format!("invalid callback: {reason}")).into_response();
     }
-    // Stash callback+state in an encrypted cookie so the confirmation POST
-    // (and any login detour) can pick it back up.
-    let payload = format!("{}\n{}", q.callback, q.state);
+    // (Re-)stash so the confirmation POST and any login detour pick it back up.
+    let payload = format!("{}\n{}", callback, cli_state);
     let cookie = Cookie::build((CLI_RETURN_COOKIE, payload))
         .path("/")
         .http_only(true)
@@ -364,7 +382,7 @@ async fn cli_authorize(
         Err(_) => return (jar, Redirect::to("/login")).into_response(),
     };
 
-    (jar, CliAuthorizePage { ctx: OrgCtx::from(&user, &org), callback: q.callback, state: q.state })
+    (jar, CliAuthorizePage { ctx: OrgCtx::from(&user, &org), callback, state: cli_state })
         .into_response()
 }
 
