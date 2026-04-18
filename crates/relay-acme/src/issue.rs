@@ -72,10 +72,14 @@ pub async fn issue_wildcard(
         )
         .await?;
 
-    // Identifiers.
-    let mut idents = vec![Identifier::Dns(opts.base_domain.clone())];
+    // Identifiers — wildcard form. Per RFC 8555 §7.1.3, ACME servers
+    // authorize a wildcard via DNS-01 at `_acme-challenge.<base>` (the
+    // `*.` is stripped for the challenge name). The CSR SANs must then
+    // match the order identifiers exactly, so we keep the wildcard form
+    // throughout.
+    let mut idents = vec![Identifier::Dns(format!("*.{}", opts.base_domain))];
     if let Some(eph) = &opts.temporary_label {
-        idents.push(Identifier::Dns(format!("{eph}.{}", opts.base_domain)));
+        idents.push(Identifier::Dns(format!("*.{eph}.{}", opts.base_domain)));
     }
 
     let mut order = account.new_order(&NewOrder::new(&idents)).await?;
@@ -160,11 +164,13 @@ pub async fn issue_wildcard(
         }
 
         let kp = rcgen::KeyPair::generate()?;
+        // Order identifiers are already wildcard form; CSR SANs must match
+        // those identifiers byte-for-byte or LE rejects the finalize.
         let sans: Vec<String> = idents
             .iter()
             .map(|i| {
                 let Identifier::Dns(n) = i else { unreachable!() };
-                format!("*.{n}")
+                n.clone()
             })
             .collect();
         let mut params = rcgen::CertificateParams::new(sans.clone())?;
