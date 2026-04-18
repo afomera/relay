@@ -11,29 +11,39 @@ pub struct RuntimeCtx {
 
 pub mod auth {
     use super::*;
-    use crate::AuthCmd;
+    use crate::{AuthCmd, DEFAULT_SERVER};
     use relay_cli::config;
 
     pub async fn run(cmd: AuthCmd, mut cfg: Config) -> anyhow::Result<()> {
         match cmd {
-            AuthCmd::Login { token } => {
+            AuthCmd::Login { token, server } => {
                 cfg.token = Some(token);
+                if let Some(s) = server {
+                    cfg.server = Some(s);
+                }
                 config::save(&cfg)?;
-                println!("saved token to {}", config::path()?.display());
+                let path = config::path()?;
+                let active_server = cfg.server.as_deref().unwrap_or(DEFAULT_SERVER);
+                println!("saved token to {}", path.display());
+                println!("server: {active_server}");
             }
             AuthCmd::Logout => {
                 cfg.token = None;
+                // Keep `server` on disk — it's not a secret and most users
+                // re-login against the same server.
                 config::save(&cfg)?;
                 println!("token removed");
             }
             AuthCmd::Status => {
+                let server = cfg.server.as_deref().unwrap_or(DEFAULT_SERVER);
+                let source =
+                    if cfg.server.is_some() { "from config" } else { "compiled-in default" };
                 if cfg.token.is_some() {
-                    println!(
-                        "logged in; server = {}",
-                        cfg.server.as_deref().unwrap_or("<default>")
-                    );
+                    println!("logged in");
+                    println!("server: {server} ({source})");
                 } else {
                     println!("no token configured");
+                    println!("server: {server} ({source})");
                 }
             }
         }

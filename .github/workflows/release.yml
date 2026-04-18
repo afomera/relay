@@ -104,6 +104,16 @@ jobs:
           key: release-${{ matrix.target }}
 
       - name: Build
+        env:
+          # Bake in the hosted endpoint so `brew install relay` users get a
+          # working CLI without any config. Self-hosters set this in their
+          # fork's workflow (or build with `RELAY_DEFAULT_SERVER=... cargo
+          # build --release` locally).
+          #
+          # Commented until the hosted QUIC endpoint is public; uncomment and
+          # fill once the DNS/cert story for it is nailed down.
+          # RELAY_DEFAULT_SERVER: tunnel.sharedwithrelay.com:443
+          RELAY_DEFAULT_SERVER: ${{ vars.RELAY_DEFAULT_SERVER }}
         run: cargo build --release --target ${{ matrix.target }} --bin relay
 
       - name: Package

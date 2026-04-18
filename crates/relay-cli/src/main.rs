@@ -10,10 +10,26 @@ use relay_cli::config;
 
 use clap::{Parser, Subcommand};
 
+/// The default server address, baked in at compile time.
+///
+/// - Hosted builds: set `RELAY_DEFAULT_SERVER=tunnel.sharedwithrelay.com:443`
+///   (or whatever your edge lives at) in the release workflow to ship a CLI
+///   that needs zero config out of the box.
+/// - Fork / self-host builds: set your own value.
+/// - Dev builds: the fallback is `localhost:7443`, matching `relayd --dev`.
+pub(crate) const DEFAULT_SERVER: &str = match option_env!("RELAY_DEFAULT_SERVER") {
+    Some(s) => s,
+    None => "localhost:7443",
+};
+
 #[derive(Parser)]
 #[command(name = "relay", version, about = "Expose local services through a relayd server.")]
 struct Cli {
-    /// Override the relay server (host:port UDP). Defaults to config or localhost:7443.
+    /// Override the relay server (host:port UDP). Precedence:
+    ///   1. --server flag
+    ///   2. RELAY_SERVER env
+    ///   3. `server` from ~/.config/relay/config.toml
+    ///   4. compile-time default (see DEFAULT_SERVER)
     #[arg(long, global = true, env = "RELAY_SERVER")]
     server: Option<String>,
 
@@ -60,9 +76,16 @@ enum Command {
 
 #[derive(Subcommand)]
 enum AuthCmd {
+    /// Save an API token (and optionally the server it belongs to).
     Login {
         #[arg(long)]
         token: String,
+        /// Relay server this token belongs to (host:port UDP). Pass this
+        /// when pointing at a self-hosted relay; omit it to keep whatever
+        /// server is already in the config (or fall back to the built-in
+        /// default).
+        #[arg(long)]
+        server: Option<String>,
     },
     Logout,
     Status,
@@ -78,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let cfg = config::load()?;
     let runtime = commands::RuntimeCtx {
-        server: cli.server.or(cfg.server.clone()).unwrap_or_else(|| "localhost:7443".into()),
+        server: cli.server.or(cfg.server.clone()).unwrap_or_else(|| DEFAULT_SERVER.to_string()),
         token: cli.token.or(cfg.token.clone()).unwrap_or_default(),
         insecure: cli.insecure,
         cafile: cli.cafile,
