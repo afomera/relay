@@ -236,6 +236,13 @@ pub mod http {
         inspect: bool,
         reconnect: bool,
     ) -> anyhow::Result<()> {
+        // Fail fast with a useful message before we burn cycles on a QUIC
+        // handshake that would just be rejected by the server anyway.
+        if ctx.token.is_empty() {
+            anyhow::bail!(
+                "not signed in — run `relay auth login` (or pass --token)"
+            );
+        }
         // --domain shadows --hostname when both set.
         let mut desired = domain.or(hostname);
         let mut backoff = Duration::from_millis(500);
@@ -447,6 +454,9 @@ pub mod tcp {
     use relay_cli::{client, tls};
 
     pub async fn run(ctx: RuntimeCtx, port: u16) -> anyhow::Result<()> {
+        if ctx.token.is_empty() {
+            anyhow::bail!("not signed in — run `relay auth login` (or pass --token)");
+        }
         let server_name = ctx.server.split(':').next().unwrap_or("localhost").to_string();
         let server_addr = ctx.server.to_socket_addrs_first()?;
         let client_cfg = tls::build_client_config(ctx.insecure, ctx.cafile.as_deref())?;

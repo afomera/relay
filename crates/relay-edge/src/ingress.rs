@@ -307,12 +307,21 @@ fn is_ingress_hop_by_hop(name: &str) -> bool {
 }
 
 fn error_page(status: StatusCode, msg: &str) -> Response<Body> {
+    // `color-scheme: light dark` flips UA defaults (form controls, scrollbars)
+    // per the user's OS preference; the prefers-color-scheme block swaps our
+    // own palette so nobody gets flash-banged at 2am.
     let html = format!(
         r#"<!doctype html><html><head><meta charset="utf-8"><title>relay</title>
-<style>body{{font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem;color:#222}}
-h1{{font-size:1.4rem}}code{{background:#f3f3f3;padding:.15em .3em;border-radius:3px}}</style></head>
+<meta name="color-scheme" content="light dark">
+<style>:root{{--fg:#222;--bg:#fff;--code-bg:#f3f3f3;--muted:#666}}
+@media (prefers-color-scheme: dark){{:root{{--fg:#e6e6e6;--bg:#111;--code-bg:#1e1e1e;--muted:#888}}}}
+html,body{{background:var(--bg);color:var(--fg)}}
+body{{font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem}}
+h1{{font-size:1.4rem}}
+code{{background:var(--code-bg);padding:.15em .3em;border-radius:3px}}
+.sub{{color:var(--muted)}}</style></head>
 <body><h1>relay — {}</h1><p><code>{}</code></p>
-<p>Tunnel not found, offline, or the request was malformed.</p></body></html>"#,
+<p class="sub">Tunnel not found, offline, or the request was malformed.</p></body></html>"#,
         status.as_u16(),
         html_escape(msg),
     );
