@@ -112,9 +112,22 @@ struct DomainsSection {
     temporary: Option<String>,
 }
 
+/// `[db]` config. Exactly one of `url` / `url_env` must be set; the latter
+/// matches the pattern used for `data_key_env`, `client_secret_env` et al and
+/// is the ergonomic choice for managed-Postgres deploys that expose a
+/// `DATABASE_URL`-style env var.
 #[derive(Debug, Deserialize)]
 struct DbSection {
-    url: String,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    url_env: Option<String>,
+    /// Optional pool-size override. Defaults: SQLite = 10, Postgres = 20.
+    #[serde(default)]
+    max_connections: Option<u32>,
+    /// Optional per-acquire timeout in seconds. Default: 5s.
+    #[serde(default)]
+    acquire_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,7 +193,7 @@ async fn run_dev(args: Args) -> anyhow::Result<()> {
     } else {
         format!("sqlite://{}", args.dev_db)
     };
-    let db = Db::connect(&db_url).await?;
+    let db = Db::connect_url(&db_url).await?;
     db.migrate().await?;
     let stale = relay_db::mark_all_tunnels_disconnected(&db).await?;
     tracing::info!(url = %db_url, stale_swept = stale, "dev database ready");
@@ -281,10 +294,16 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         );
     }
 
-    let db = Db::connect(&cfg.db.url).await?;
+    let db_url = resolve_db_url(&cfg.db)?;
+    let db_opts = relay_db::DbOpenOpts {
+        url: &db_url,
+        max_connections: cfg.db.max_connections,
+        acquire_timeout: cfg.db.acquire_timeout_secs.map(std::time::Duration::from_secs),
+    };
+    let db = Db::connect(&db_opts).await?;
     db.migrate().await?;
     let stale = relay_db::mark_all_tunnels_disconnected(&db).await?;
-    tracing::info!(url = %cfg.db.url, stale_swept = stale, "db ready");
+    tracing::info!(url = %db_url, stale_swept = stale, "db ready");
 
     // ---- Control plane ----
     let github = match cfg.github_oauth {
@@ -463,6 +482,28 @@ fn random_data_key_b64() -> String {
     let mut buf = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut buf);
     base64::engine::general_purpose::STANDARD.encode(buf)
+}
+
+/// `url_env` takes precedence when set — self-hosters on PaaS platforms
+/// (PlanetScale, Neon, Fly, Railway) inject the URL via env rather than
+/// committing it to `relayd.toml`. A literal `url` is the fallback.
+fn resolve_db_url(db: &DbSection) -> anyhow::Result<String> {
+    if let Some(env_name) = db.url_env.as_deref() {
+        let raw = std::env::var(env_name).map_err(|_| {
+            anyhow::anyhow!("db.url_env `{env_name}` is not set in the environment")
+        })?;
+        if raw.is_empty() {
+            anyhow::bail!("db.url_env `{env_name}` is empty");
+        }
+        return Ok(raw);
+    }
+    if let Some(url) = db.url.as_deref() {
+        if url.is_empty() {
+            anyhow::bail!("db.url is empty — set `url` or `url_env` in the [db] section");
+        }
+        return Ok(url.to_string());
+    }
+    anyhow::bail!("[db] section needs either `url` or `url_env`");
 }
 
 fn build_dns_provider(dns: Option<&DnsSection>) -> anyhow::Result<Option<Arc<dyn DnsProvider>>> {

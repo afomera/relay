@@ -4,7 +4,7 @@ use relay_db::{Db, prelude::*};
 
 #[tokio::test]
 async fn basic_crud_round_trip() {
-    let db = Db::connect("sqlite::memory:").await.unwrap();
+    let db = Db::connect_url("sqlite::memory:").await.unwrap();
     db.migrate().await.unwrap();
 
     // Create a user + personal org.

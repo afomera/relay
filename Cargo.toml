@@ -63,8 +63,10 @@ rustls = "0.23"
 rustls-pemfile = "2"
 rcgen = "0.13"
 
-# database
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "postgres", "uuid", "time", "macros", "migrate"] }
+# database. `tls-rustls-ring-webpki` brings in rustls + the Mozilla CA bundle
+# so we can connect to managed Postgres (PlanetScale Postgres, Neon, Crunchy,
+# Fly) over TLS without depending on the system trust store.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "sqlite", "postgres", "uuid", "time", "macros", "migrate"] }
 
 # cli
 clap = { version = "4", features = ["derive", "env"] }

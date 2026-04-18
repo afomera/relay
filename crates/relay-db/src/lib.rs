@@ -9,6 +9,7 @@ pub mod models;
 mod backend;
 
 use std::path::Path;
+use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -17,6 +18,25 @@ pub use sqlx;
 
 use crate::models::*;
 use uuid::Uuid;
+
+/// Pool tuning applied at `Db::connect` time. Both fields are optional so
+/// callers can fall through to per-backend defaults (SQLite=10 / Postgres=20,
+/// 5s acquire timeout on both).
+#[derive(Debug, Clone)]
+pub struct DbOpenOpts<'a> {
+    pub url: &'a str,
+    pub max_connections: Option<u32>,
+    pub acquire_timeout: Option<Duration>,
+}
+
+impl<'a> DbOpenOpts<'a> {
+    pub fn new(url: &'a str) -> Self {
+        Self { url, max_connections: None, acquire_timeout: None }
+    }
+}
+
+const SQLITE_DEFAULT_MAX_CONNS: u32 = 10;
+const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
@@ -38,13 +58,20 @@ pub enum Db {
 }
 
 impl Db {
-    /// Connect based on the URL scheme. Supports `sqlite:<path>` / `sqlite::memory:`.
-    /// Postgres support is added in a follow-up commit.
-    pub async fn connect(url: &str) -> Result<Self, DbError> {
+    /// Connect using the supplied options. The URL scheme picks the backend:
+    /// `sqlite:<path>` / `sqlite::memory:` (Postgres lands in a follow-up).
+    pub async fn connect(opts: &DbOpenOpts<'_>) -> Result<Self, DbError> {
+        let url = opts.url;
         if url.starts_with("sqlite:") {
-            let opts: SqliteConnectOptions = url.parse()?;
-            let opts = opts.create_if_missing(true).foreign_keys(true);
-            let pool = SqlitePoolOptions::new().max_connections(10).connect_with(opts).await?;
+            let sqlite_opts: SqliteConnectOptions = url.parse()?;
+            let sqlite_opts = sqlite_opts.create_if_missing(true).foreign_keys(true);
+            let max = opts.max_connections.unwrap_or(SQLITE_DEFAULT_MAX_CONNS);
+            let timeout = opts.acquire_timeout.unwrap_or(DEFAULT_ACQUIRE_TIMEOUT);
+            let pool = SqlitePoolOptions::new()
+                .max_connections(max)
+                .acquire_timeout(timeout)
+                .connect_with(sqlite_opts)
+                .await?;
             Ok(Self::Sqlite(pool))
         } else {
             Err(DbError::Sql(sqlx::Error::Configuration(
@@ -53,9 +80,15 @@ impl Db {
         }
     }
 
+    /// Convenience wrapper for callers that don't need to tune the pool —
+    /// equivalent to `Db::connect(&DbOpenOpts::new(url))`.
+    pub async fn connect_url(url: &str) -> Result<Self, DbError> {
+        Self::connect(&DbOpenOpts::new(url)).await
+    }
+
     pub async fn connect_sqlite_path(path: &Path) -> Result<Self, DbError> {
         let url = format!("sqlite://{}", path.display());
-        Self::connect(&url).await
+        Self::connect_url(&url).await
     }
 
     pub async fn migrate(&self) -> Result<(), DbError> {
