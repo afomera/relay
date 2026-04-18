@@ -201,7 +201,7 @@ async fn run_dev(args: Args) -> anyhow::Result<()> {
     let db = Db::connect_url(&db_url).await?;
     db.migrate().await?;
     let stale = relay_db::mark_all_tunnels_disconnected(&db).await?;
-    tracing::info!(url = %db_url, stale_swept = stale, "dev database ready");
+    tracing::info!(url = %redact_db_url(&db_url), stale_swept = stale, "dev database ready");
 
     // Random data key per process — fine for dev because we re-encrypt nothing
     // important across restarts (no real certs in dev).
@@ -309,7 +309,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
     let db = Db::connect(&db_opts).await?;
     db.migrate().await?;
     let stale = relay_db::mark_all_tunnels_disconnected(&db).await?;
-    tracing::info!(url = %db_url, stale_swept = stale, "db ready");
+    tracing::info!(url = %redact_db_url(&db_url), stale_swept = stale, "db ready");
 
     // ---- Control plane ----
     let github = match cfg.github_oauth {
@@ -491,6 +491,69 @@ fn random_data_key_b64() -> String {
     base64::engine::general_purpose::STANDARD.encode(buf)
 }
 
+/// Strip the password out of a DB URL before it's written to logs. Keeps the
+/// scheme, user, host, path, and query params intact so the log line remains
+/// useful for debugging; only the `:password` in the userinfo and any
+/// `password=` query param get replaced with `***`.
+///
+/// `postgres://u:secret@host/db?sslmode=require`
+///   → `postgres://u:***@host/db?sslmode=require`
+/// `sqlite:///var/lib/relay/relay.db` — passed through unchanged.
+fn redact_db_url(url: &str) -> String {
+    let mut out = String::with_capacity(url.len());
+
+    // Split on the first `?` so the userinfo redaction doesn't touch the query.
+    let (base, query) = match url.find('?') {
+        Some(i) => (&url[..i], Some(&url[i + 1..])),
+        None => (url, None),
+    };
+
+    // Userinfo: between `://` and the first `@` in the base.
+    if let Some(scheme_end) = base.find("://") {
+        let rest_start = scheme_end + 3;
+        if let Some(at_offset) = base[rest_start..].find('@') {
+            let at = rest_start + at_offset;
+            let userinfo = &base[rest_start..at];
+            if let Some(colon_offset) = userinfo.find(':') {
+                let pwd_start = rest_start + colon_offset + 1;
+                out.push_str(&base[..pwd_start]);
+                out.push_str("***");
+                out.push_str(&base[at..]);
+            } else {
+                out.push_str(base);
+            }
+        } else {
+            out.push_str(base);
+        }
+    } else {
+        out.push_str(base);
+    }
+
+    // Query: rewrite any `password=…` param without touching the others. libpq
+    // accepts this form, so managed-service URLs occasionally use it.
+    if let Some(q) = query {
+        out.push('?');
+        let mut first = true;
+        for pair in q.split('&') {
+            if !first {
+                out.push('&');
+            }
+            first = false;
+            if let Some(eq) = pair.find('=') {
+                let (k, _v) = (&pair[..eq], &pair[eq + 1..]);
+                if k.eq_ignore_ascii_case("password") {
+                    out.push_str(k);
+                    out.push_str("=***");
+                    continue;
+                }
+            }
+            out.push_str(pair);
+        }
+    }
+
+    out
+}
+
 /// `url_env` takes precedence when set — self-hosters on PaaS platforms
 /// (PlanetScale, Neon, Fly, Railway) inject the URL via env rather than
 /// committing it to `relayd.toml`. A literal `url` is the fallback.
@@ -530,5 +593,54 @@ fn build_dns_provider(dns: Option<&DnsSection>) -> anyhow::Result<Option<Arc<dyn
             Ok(None)
         }
         other => anyhow::bail!("unknown dns provider `{other}`"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_db_url;
+
+    #[test]
+    fn redacts_password_in_userinfo() {
+        assert_eq!(
+            redact_db_url("postgres://u:hunter2@h.example/db"),
+            "postgres://u:***@h.example/db",
+        );
+        assert_eq!(
+            redact_db_url("postgresql://u:hunter2@h.example:5432/db?sslmode=require"),
+            "postgresql://u:***@h.example:5432/db?sslmode=require",
+        );
+    }
+
+    #[test]
+    fn leaves_url_without_password_alone() {
+        assert_eq!(redact_db_url("postgres://u@h/db"), "postgres://u@h/db");
+        assert_eq!(redact_db_url("postgres://h/db"), "postgres://h/db");
+        assert_eq!(
+            redact_db_url("sqlite:///var/lib/relay/relay.db"),
+            "sqlite:///var/lib/relay/relay.db",
+        );
+        assert_eq!(redact_db_url("sqlite::memory:"), "sqlite::memory:");
+    }
+
+    #[test]
+    fn redacts_password_in_query_param() {
+        assert_eq!(
+            redact_db_url("postgres://h/db?password=hunter2&sslmode=require"),
+            "postgres://h/db?password=***&sslmode=require",
+        );
+        // Mixed: password in both userinfo and query. Both get masked.
+        assert_eq!(
+            redact_db_url("postgres://u:hunter2@h/db?password=other&x=1"),
+            "postgres://u:***@h/db?password=***&x=1",
+        );
+    }
+
+    #[test]
+    fn preserves_other_query_params() {
+        assert_eq!(
+            redact_db_url("postgres://u:p@h/db?sslmode=verify-full&application_name=relay"),
+            "postgres://u:***@h/db?sslmode=verify-full&application_name=relay",
+        );
     }
 }
