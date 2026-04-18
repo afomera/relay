@@ -52,10 +52,7 @@ pub(crate) async fn find_user_by_id(db: &Db, id: Uuid) -> Result<Option<User>, D
     Ok(row)
 }
 
-pub(crate) async fn find_org_by_id(
-    db: &Db,
-    id: Uuid,
-) -> Result<Option<Organization>, DbError> {
+pub(crate) async fn find_org_by_id(db: &Db, id: Uuid) -> Result<Option<Organization>, DbError> {
     let row = sqlx::query_as::<_, Organization>("SELECT * FROM organizations WHERE id = $1")
         .bind(id)
         .fetch_optional(pool(db))
@@ -246,10 +243,7 @@ pub(crate) async fn delete_token(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), 
     Ok(())
 }
 
-pub(crate) async fn find_token_by_hash(
-    db: &Db,
-    hashed: &str,
-) -> Result<Option<ApiToken>, DbError> {
+pub(crate) async fn find_token_by_hash(db: &Db, hashed: &str) -> Result<Option<ApiToken>, DbError> {
     let row = sqlx::query_as::<_, ApiToken>("SELECT * FROM api_tokens WHERE hashed_token = $1")
         .bind(hashed)
         .fetch_optional(pool(db))
@@ -397,11 +391,7 @@ pub(crate) async fn delete_disconnected_tunnels_for_org(
     Ok(res.rows_affected())
 }
 
-pub(crate) async fn delete_tunnel_for_org(
-    db: &Db,
-    id: Uuid,
-    org_id: Uuid,
-) -> Result<(), DbError> {
+pub(crate) async fn delete_tunnel_for_org(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), DbError> {
     let res = sqlx::query("DELETE FROM tunnels WHERE id = $1 AND org_id = $2")
         .bind(id)
         .bind(org_id)
@@ -534,10 +524,7 @@ pub(crate) async fn find_custom_domain(
 }
 
 pub(crate) async fn delete_custom_domain_by_id(db: &Db, id: Uuid) -> Result<(), DbError> {
-    sqlx::query("DELETE FROM custom_domains WHERE id = $1")
-        .bind(id)
-        .execute(pool(db))
-        .await?;
+    sqlx::query("DELETE FROM custom_domains WHERE id = $1").bind(id).execute(pool(db)).await?;
     Ok(())
 }
 
@@ -647,10 +634,7 @@ pub(crate) async fn find_tunnel_for_org(
     Ok(row)
 }
 
-pub(crate) async fn find_tunnel_org_id(
-    db: &Db,
-    tunnel_id: Uuid,
-) -> Result<Option<Uuid>, DbError> {
+pub(crate) async fn find_tunnel_org_id(db: &Db, tunnel_id: Uuid) -> Result<Option<Uuid>, DbError> {
     let row: Option<Uuid> = sqlx::query_scalar("SELECT org_id FROM tunnels WHERE id = $1")
         .bind(tunnel_id)
         .fetch_optional(pool(db))
@@ -727,10 +711,7 @@ pub(crate) async fn list_captures(
     Ok(rows)
 }
 
-pub(crate) async fn get_capture(
-    db: &Db,
-    id: Uuid,
-) -> Result<Option<InspectionCapture>, DbError> {
+pub(crate) async fn get_capture(db: &Db, id: Uuid) -> Result<Option<InspectionCapture>, DbError> {
     let row =
         sqlx::query_as::<_, InspectionCapture>("SELECT * FROM inspection_captures WHERE id = $1")
             .bind(id)
@@ -739,10 +720,7 @@ pub(crate) async fn get_capture(
     Ok(row)
 }
 
-pub(crate) async fn clear_captures_for_tunnel(
-    db: &Db,
-    tunnel_id: Uuid,
-) -> Result<u64, DbError> {
+pub(crate) async fn clear_captures_for_tunnel(db: &Db, tunnel_id: Uuid) -> Result<u64, DbError> {
     let res = sqlx::query("DELETE FROM inspection_captures WHERE tunnel_id = $1")
         .bind(tunnel_id)
         .execute(pool(db))

@@ -348,9 +348,7 @@ fn capture_into(buf: &mut Vec<u8>, chunk: &[u8], truncated: &mut bool, cap: usiz
 /// run Cloudflare DNS-only, so these headers won't be present and we fall
 /// through to the peer IP — but this future-proofs an orange-cloud flip.
 fn resolve_client_ip(remote: SocketAddr, headers: &HeaderMap) -> String {
-    if let Some(ip) =
-        headers.get("cf-connecting-ip").and_then(|v| v.to_str().ok()).map(str::trim)
-    {
+    if let Some(ip) = headers.get("cf-connecting-ip").and_then(|v| v.to_str().ok()).map(str::trim) {
         if !ip.is_empty() {
             return ip.to_string();
         }

@@ -5,15 +5,15 @@
 //! forward to the right backend. Consumers call `relay_db::create_org(...)`
 //! and never see the backend module directly.
 
-pub mod models;
 mod backend;
+pub mod models;
 
 use std::path::Path;
 use std::time::Duration;
 
+use sqlx::SqlitePool;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::SqlitePool;
 
 pub use sqlx;
 
@@ -285,10 +285,7 @@ pub async fn create_reservation(
     dispatch!(db, create_reservation(org_id, label))
 }
 
-pub async fn list_reservations_for_org(
-    db: &Db,
-    org_id: Uuid,
-) -> Result<Vec<Reservation>, DbError> {
+pub async fn list_reservations_for_org(db: &Db, org_id: Uuid) -> Result<Vec<Reservation>, DbError> {
     dispatch!(db, list_reservations_for_org(org_id))
 }
 

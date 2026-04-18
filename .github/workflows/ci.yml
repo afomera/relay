@@ -41,6 +41,25 @@ jobs:
   test:
     name: cargo test
     runs-on: ubuntu-latest
+    # Postgres 18.3 matches the PlanetScale Postgres version in prod. The
+    # relay-db `postgres_parity` test reads `RELAY_PG_TEST_URL`; any other
+    # test ignores it. pg_isready gates job start so we don't race the
+    # service coming up.
+    services:
+      postgres:
+        image: postgres:18.3-alpine
+        env:
+          POSTGRES_PASSWORD: relay
+          POSTGRES_DB: relay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      RELAY_PG_TEST_URL: postgres://postgres:relay@localhost:5432/relay_test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

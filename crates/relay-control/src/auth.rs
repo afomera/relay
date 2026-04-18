@@ -274,7 +274,9 @@ async fn fetch_primary_email(client: &reqwest::Client, access_token: &str) -> Op
             && e.get("verified").and_then(|v| v.as_bool()).unwrap_or(false)
     });
     let pick = primary_verified
-        .or_else(|| arr.iter().find(|e| e.get("verified").and_then(|v| v.as_bool()).unwrap_or(false)))
+        .or_else(|| {
+            arr.iter().find(|e| e.get("verified").and_then(|v| v.as_bool()).unwrap_or(false))
+        })
         .or_else(|| arr.first());
     pick.and_then(|e| e.get("email").and_then(|v| v.as_str()).map(str::to_string))
 }
