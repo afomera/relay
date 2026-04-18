@@ -17,6 +17,21 @@ pub fn generate_full(temporary_domain: &str) -> String {
     format!("{}.{}", generate_label(), temporary_domain)
 }
 
+/// Let CLI users pass a short label (e.g. `andrea` or `*.andrea`) instead
+/// of the full FQDN. If `input` already looks like an FQDN (contains a dot
+/// after any leading `*.`), it's returned as-is. Otherwise the base domain
+/// is appended so `andrea` → `andrea.<base>` and `*.andrea` → `*.andrea.<base>`.
+pub fn expand_hostname(input: &str, base_domain: &str) -> String {
+    let rest = input.strip_prefix("*.").unwrap_or(input);
+    if rest.contains('.') {
+        input.to_string()
+    } else if input.starts_with("*.") {
+        format!("*.{rest}.{base_domain}")
+    } else {
+        format!("{rest}.{base_domain}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -28,5 +43,27 @@ mod tests {
         assert_eq!(parts.len(), 3);
         assert_eq!(parts[2].len(), 4);
         assert!(parts[2].chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn expands_bare_label() {
+        assert_eq!(expand_hostname("andrea", "example.com"), "andrea.example.com");
+    }
+
+    #[test]
+    fn expands_wildcard_label() {
+        assert_eq!(expand_hostname("*.andrea", "example.com"), "*.andrea.example.com");
+    }
+
+    #[test]
+    fn preserves_fqdn() {
+        assert_eq!(
+            expand_hostname("andrea.example.com", "other.com"),
+            "andrea.example.com"
+        );
+        assert_eq!(
+            expand_hostname("*.andrea.example.com", "other.com"),
+            "*.andrea.example.com"
+        );
     }
 }

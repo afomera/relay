@@ -196,7 +196,7 @@ async fn handle_register(
     }
 
     let hostname = match req.hostname.clone() {
-        Some(h) => h.to_ascii_lowercase(),
+        Some(h) => hostnames::expand_hostname(&h, &cfg.base_domain).to_ascii_lowercase(),
         None => hostnames::generate_full(&cfg.temporary_domain).to_ascii_lowercase(),
     };
 
