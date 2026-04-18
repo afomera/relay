@@ -94,7 +94,7 @@ impl Db {
     pub async fn migrate(&self) -> Result<(), DbError> {
         match self {
             Db::Sqlite(pool) => {
-                sqlx::migrate!("../../migrations").run(pool).await?;
+                sqlx::migrate!("../../migrations/sqlite").run(pool).await?;
                 Ok(())
             }
         }
