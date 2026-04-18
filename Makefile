@@ -51,15 +51,30 @@ run-dev:          ## run relayd in --dev mode
 # release — tag a version and push; CI cross-compiles + publishes binaries
 # ---------------------------------------------------------------------------
 
-.PHONY: release
+.PHONY: bump release
 
-# Usage: make release VERSION=0.2.0
+# Usage: make bump VERSION=0.0.3
 VERSION ?=
+bump:             ## bump [workspace.package] version in Cargo.toml + Cargo.lock
+	@test -n "$(VERSION)" || (echo "usage: make bump VERSION=0.0.3" && exit 1)
+	@# Only the workspace.package `version` line matches `^version = "..."`;
+	@# dependency versions live on inline-table lines.
+	@python3 -c "import re,pathlib; p=pathlib.Path('Cargo.toml'); \
+s=p.read_text(); \
+new,n=re.subn(r'^version = \"[^\"]*\"', 'version = \"$(VERSION)\"', s, count=1, flags=re.M); \
+assert n==1, 'no version line matched'; \
+p.write_text(new); print(f'bumped Cargo.toml → $(VERSION)')"
+	cargo update --workspace --quiet
+	@echo ""
+	@echo "next:"
+	@echo "  git commit -am 'relay $(VERSION)'"
+	@echo "  make release VERSION=$(VERSION)"
+
 release:          ## tag + push, triggering GitHub release workflow
-	@test -n "$(VERSION)" || (echo "usage: make release VERSION=0.2.0" && exit 1)
-	@git diff --quiet || (echo "tree dirty — commit first" && exit 1)
+	@test -n "$(VERSION)" || (echo "usage: make release VERSION=0.0.3" && exit 1)
+	@git diff --quiet || (echo "tree dirty — commit first (did you forget after 'make bump'?)" && exit 1)
 	@grep -q '^version = "$(VERSION)"' Cargo.toml || \
-		(echo "Cargo.toml doesn't match VERSION=$(VERSION) — update [workspace.package]" && exit 1)
+		(echo "Cargo.toml doesn't match VERSION=$(VERSION) — run 'make bump VERSION=$(VERSION)' first" && exit 1)
 	git tag v$(VERSION)
 	git push origin main v$(VERSION)
 	@echo ""
