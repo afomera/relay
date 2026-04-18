@@ -101,6 +101,7 @@ pub struct HttpCapture {
     pub resp_headers: Vec<(String, String)>,
     pub resp_body: Vec<u8>,
     pub truncated: bool,
+    pub client_ip: String,
 }
 
 pub struct NoopCaptureSink;

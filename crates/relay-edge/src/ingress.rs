@@ -166,6 +166,7 @@ async fn handle_inner(
     let path_str =
         req.uri().path_and_query().map(|p| p.to_string()).unwrap_or_else(|| "/".to_string());
     let req_headers = collect_headers(req.headers());
+    let client_ip = resolve_client_ip(remote, req.headers());
 
     let header = HttpRequestHeader {
         tunnel_id: handle.tunnel_id,
@@ -173,7 +174,7 @@ async fn handle_inner(
         method: method_str.clone(),
         path: path_str.clone(),
         headers: req_headers.clone(),
-        remote_ip: remote.ip().to_string(),
+        remote_ip: client_ip.clone(),
         tls: false,
     };
     relay_proto::write_frame(&mut send, &StreamOpen::Http(header)).await?;
@@ -196,6 +197,7 @@ async fn handle_inner(
             method_str,
             path_str,
             req_headers,
+            client_ip,
         )
         .await;
     }
@@ -245,6 +247,7 @@ async fn inspected_path(
     method_str: String,
     path_str: String,
     req_headers: Vec<(String, String)>,
+    client_ip: String,
 ) -> anyhow::Result<Response<Body>> {
     // Buffer request body up to the cap, forwarding chunks as we go.
     let mut req_capture = Vec::new();
@@ -307,6 +310,7 @@ async fn inspected_path(
         resp_headers: resp_headers.clone(),
         resp_body: resp_capture,
         truncated: req_truncated || resp_truncated,
+        client_ip,
     };
     tokio::spawn(async move {
         if let Err(e) = sink.record(capture).await {
@@ -337,6 +341,28 @@ fn capture_into(buf: &mut Vec<u8>, chunk: &[u8], truncated: &mut bool, cap: usiz
     if take < chunk.len() {
         *truncated = true;
     }
+}
+
+/// Prefer forwarded-client headers over the TCP peer so captures show the real
+/// client when the edge is behind a proxy (Cloudflare, ALB, etc.). Today we
+/// run Cloudflare DNS-only, so these headers won't be present and we fall
+/// through to the peer IP — but this future-proofs an orange-cloud flip.
+fn resolve_client_ip(remote: SocketAddr, headers: &HeaderMap) -> String {
+    if let Some(ip) =
+        headers.get("cf-connecting-ip").and_then(|v| v.to_str().ok()).map(str::trim)
+    {
+        if !ip.is_empty() {
+            return ip.to_string();
+        }
+    }
+    if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        if let Some(first) = xff.split(',').next().map(str::trim) {
+            if !first.is_empty() {
+                return first.to_string();
+            }
+        }
+    }
+    remote.ip().to_string()
 }
 
 fn collect_headers(h: &HeaderMap) -> Vec<(String, String)> {

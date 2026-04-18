@@ -17,6 +17,7 @@
     <span>status <strong class="secondary">{{ crate::templates::opt_status(capture.status) }}</strong></span>
     <span>{{ crate::templates::duration_short(capture.duration_ms) }}</span>
     <span title="{{ crate::templates::format_time(capture.started_at) }}">{{ crate::templates::time_ago(capture.started_at) }}</span>
+    {% if let Some(ip) = capture.client_ip.as_ref() %}<span>from <span class="mono">{{ ip }}</span></span>{% endif %}
     {% if capture.truncated == 1 %}<span class="pill warning">body truncated</span>{% endif %}
   </div>
 </header>

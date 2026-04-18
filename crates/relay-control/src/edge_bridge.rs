@@ -109,6 +109,7 @@ impl CaptureSink for DbCaptureSink {
             &c.resp_headers,
             &c.resp_body,
             c.truncated,
+            &c.client_ip,
         )
         .await
         .map_err(|e| RecordError::Other(e.to_string()))?;

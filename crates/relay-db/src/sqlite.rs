@@ -556,6 +556,7 @@ pub async fn insert_full_capture(
     resp_headers: &[(String, String)],
     resp_body: &[u8],
     truncated: bool,
+    client_ip: &str,
 ) -> Result<Uuid, DbError> {
     let id = Uuid::new_v4();
     let req_h = serde_json::to_string(req_headers)?;
@@ -563,8 +564,8 @@ pub async fn insert_full_capture(
     sqlx::query(
         "INSERT INTO inspection_captures \
          (id, tunnel_id, request_id, started_at, completed_at, method, path, status, duration_ms, \
-          req_headers_json, req_body, resp_headers_json, resp_body, truncated) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          req_headers_json, req_body, resp_headers_json, resp_body, truncated, client_ip) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(id)
     .bind(tunnel_id)
@@ -580,6 +581,7 @@ pub async fn insert_full_capture(
     .bind(&resp_h)
     .bind(resp_body)
     .bind(truncated as i64)
+    .bind(client_ip)
     .execute(pool(db))
     .await?;
     Ok(id)

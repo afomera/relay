@@ -102,6 +102,7 @@ pub struct InspectionCapture {
     pub resp_headers_json: Option<String>,
     pub resp_body: Option<Vec<u8>>,
     pub truncated: i64,
+    pub client_ip: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow)]
