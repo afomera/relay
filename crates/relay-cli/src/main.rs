@@ -1,4 +1,8 @@
-//! `relay` — the CLI entry point. See `SPEC.md` §10 for the command surface.
+//! `relay` — the CLI entry point. See `SPEC.md` §10 for the full command
+//! surface planned. The v0.x CLI only exposes the commands that are fully
+//! implemented end-to-end (auth + http + tcp). Management commands
+//! (tunnels/domains/reservations) and tls-passthrough land once they're
+//! shippable — until then they live in the dashboard or the spec.
 
 mod commands;
 
@@ -34,6 +38,7 @@ enum Command {
     /// Manage CLI authentication with a relay server.
     #[command(subcommand)]
     Auth(AuthCmd),
+
     /// Open an HTTP tunnel to a local port.
     Http {
         port: u16,
@@ -48,23 +53,9 @@ enum Command {
         #[arg(long)]
         no_reconnect: bool,
     },
+
     /// Open a raw TCP tunnel to a local port.
     Tcp { port: u16 },
-    /// Open a TLS-passthrough tunnel (BYO cert on the local service).
-    Tls {
-        port: u16,
-        #[arg(long)]
-        hostname: String,
-    },
-    /// List, stop, or inspect tunnels.
-    #[command(subcommand)]
-    Tunnels(TunnelsCmd),
-    /// Manage custom domains.
-    #[command(subcommand)]
-    Domains(DomainsCmd),
-    /// Manage subdomain reservations.
-    #[command(subcommand)]
-    Reservations(ReservationsCmd),
 }
 
 #[derive(Subcommand)]
@@ -75,25 +66,6 @@ enum AuthCmd {
     },
     Logout,
     Status,
-}
-
-#[derive(Subcommand)]
-enum TunnelsCmd {
-    List,
-    Stop { id: String },
-}
-
-#[derive(Subcommand)]
-enum DomainsCmd {
-    List,
-    Add { domain: String },
-    Verify { domain: String },
-}
-
-#[derive(Subcommand)]
-enum ReservationsCmd {
-    List,
-    Add { label: String },
 }
 
 #[tokio::main]
@@ -118,11 +90,5 @@ async fn main() -> anyhow::Result<()> {
             commands::http::run(runtime, port, hostname, domain, !no_inspect, !no_reconnect).await
         }
         Command::Tcp { port } => commands::tcp::run(runtime, port).await,
-        Command::Tls { .. } => {
-            anyhow::bail!("tls-passthrough tunnels are deferred — see SPEC.md");
-        }
-        Command::Tunnels(_) | Command::Domains(_) | Command::Reservations(_) => {
-            anyhow::bail!("dashboard API commands land in M2 — see SPEC.md");
-        }
     }
 }
