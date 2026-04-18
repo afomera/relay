@@ -87,13 +87,23 @@ pub mod auth_web {
 
     type CallbackTx = Arc<Mutex<Option<oneshot::Sender<Result<String, String>>>>>;
 
-    const SUCCESS_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8"><title>authorized</title>
-<style>body{font-family:system-ui;max-width:32rem;margin:5rem auto;padding:0 1rem;color:#222}
-h1{font-size:1.4rem}code{background:#f3f3f3;padding:.15em .3em;border-radius:3px}</style></head>
-<body><h1>authorized ✓</h1><p>Token delivered to the CLI — you can close this tab.</p></body></html>"#;
+    // Shared <head> for both SUCCESS/ERROR pages. `color-scheme: light dark`
+    // swaps UA chrome (scrollbars/selection), the media query swaps our own
+    // palette. No JS; no flash on load.
+    const PAGE_HEAD: &str = r#"<meta charset="utf-8"><meta name="color-scheme" content="light dark">
+<style>:root{--fg:#222;--bg:#fff;--muted:#666}
+@media (prefers-color-scheme: dark){:root{--fg:#e6e6e6;--bg:#111;--muted:#888}}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:system-ui;max-width:32rem;margin:5rem auto;padding:0 1rem}
+h1{font-size:1.4rem}
+.sub{color:var(--muted)}</style>"#;
 
-    const ERROR_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8"><title>auth error</title></head>
-<body><h1>authorization failed</h1><p>The CLI didn't accept the callback. Close this tab and retry.</p></body></html>"#;
+    fn page(title: &str, heading: &str, body: &str) -> String {
+        format!(
+            "<!doctype html><html><head><title>{title}</title>{PAGE_HEAD}</head>\
+             <body><h1>{heading}</h1><p class=\"sub\">{body}</p></body></html>"
+        )
+    }
 
     /// Run the browser-based PAT handshake end-to-end. Returns the new token.
     ///
@@ -184,11 +194,23 @@ h1{font-size:1.4rem}code{background:#f3f3f3;padding:.15em .3em;border-radius:3px
         if let Some(tx) = slot.take() {
             let _ = tx.send(result.clone());
         }
-        let body = if result.is_ok() { SUCCESS_HTML } else { ERROR_HTML };
+        let body = if result.is_ok() {
+            page(
+                "authorized",
+                "authorized ✓",
+                "Token delivered to the CLI — you can close this tab.",
+            )
+        } else {
+            page(
+                "auth error",
+                "authorization failed",
+                "The CLI didn't accept the callback. Close this tab and retry.",
+            )
+        };
         Ok(Response::builder()
             .status(if result.is_ok() { StatusCode::OK } else { StatusCode::BAD_REQUEST })
             .header("content-type", "text/html; charset=utf-8")
-            .body(body.to_string())
+            .body(body)
             .expect("static response"))
     }
 
