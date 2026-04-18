@@ -74,7 +74,7 @@ const features = [
         code={`brew tap afomera/relay https://github.com/afomera/relay.git
 brew install relay
 
-relay auth login --token rly_pat_...
+relay auth login   # opens your browser to sign in & authorize the CLI
 relay http 3000
 # → https://bright-otter.temporary.sharedwithrelay.com`}
       />
@@ -164,7 +164,7 @@ relay http 3000
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="text-xl sm:text-2xl font-semibold tracking-tight">Ready to start tunneling?</h2>
-            <p class="mt-2 text-muted">Install the CLI, drop in your auth token, and expose a port.</p>
+            <p class="mt-2 text-muted">Install the CLI, sign in from your browser, and expose a port.</p>
           </div>
           <div class="flex flex-wrap items-center gap-3">
             <a href="/docs" class="btn btn-primary">

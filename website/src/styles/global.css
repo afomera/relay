@@ -167,6 +167,22 @@
     font-size: 0.875rem;
     line-height: 1.65;
   }
+  .code-shell__body .astro-code {
+    margin: 0;
+    padding: 0.875rem 1.125rem;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    background-color: transparent !important;
+  }
+  .dark .code-shell__body .astro-code,
+  .dark .code-shell__body .astro-code span {
+    color: var(--shiki-dark) !important;
+    background-color: transparent !important;
+    font-style: var(--shiki-dark-font-style) !important;
+    font-weight: var(--shiki-dark-font-weight) !important;
+    text-decoration: var(--shiki-dark-text-decoration) !important;
+  }
 
   .callout {
     display: flex;

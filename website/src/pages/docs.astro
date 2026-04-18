@@ -81,20 +81,25 @@ brew install relay`}
 
         <h2 id="authenticate">Authenticate</h2>
         <p>
-          Relay needs a personal access token to talk to the control plane. Grab one from your
-          account settings — it looks like <code class="code-inline">rly_pat_…</code>.
+          Run <code class="code-inline">relay auth login</code> and relay opens your browser to
+          the dashboard, where you sign in and authorize the CLI. Once you approve, relay saves the
+          token locally so <code class="code-inline">relay http</code> and friends just work.
         </p>
-        <CodeBlock lang="sh" code={`relay auth login --token rly_pat_...`} />
+        <CodeBlock lang="sh" code={`relay auth login`} />
         <p>
-          The token is stored in your OS keychain where available, and otherwise in
-          <code class="code-inline">~/.config/relay/credentials</code>. You only need to do this once
+          The token is written to <code class="code-inline">config.toml</code> in relay's config
+          directory — <code class="code-inline">~/Library/Application Support/dev.withrelay.relay/</code>
+          on macOS, <code class="code-inline">~/.config/relay/</code> on Linux, and the equivalent
+          <code class="code-inline">%APPDATA%</code> path on Windows. You only need to do this once
           per machine.
         </p>
         <div class="callout my-6">
           <Icon name="lucide:info" class="callout__icon" />
           <p class="callout__body">
-            Prefer env vars? Set <code class="code-inline">RELAY_AUTH_TOKEN</code> and relay will use
-            it without the login step.
+            On a headless box? Pass <code class="code-inline">--no-browser</code> to print the
+            sign-in URL, or skip the handshake with
+            <code class="code-inline">relay auth login --token rly_pat_…</code> or the
+            <code class="code-inline">RELAY_AUTH_TOKEN</code> environment variable.
           </p>
         </div>
 

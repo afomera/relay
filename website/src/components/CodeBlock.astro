@@ -1,5 +1,6 @@
 ---
 import { Icon } from "astro-icon/components";
+import { Code } from "astro:components";
 
 interface Props {
   code: string;
@@ -7,6 +8,26 @@ interface Props {
 }
 
 const { code, lang } = Astro.props;
+
+// Languages Shiki recognizes. Anything else (our decorative "wildcard" /
+// "domain" / "tcp" badges) falls back to shell highlighting while still
+// showing the original label in the header.
+const SHIKI_LANGS = new Set([
+  "sh",
+  "bash",
+  "shell",
+  "zsh",
+  "http",
+  "json",
+  "toml",
+  "yaml",
+  "rust",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+]);
+const shikiLang = (lang && SHIKI_LANGS.has(lang) ? lang : "sh") as any;
 ---
 
 <div class="code-shell group">
@@ -22,7 +43,13 @@ const { code, lang } = Astro.props;
       <Icon name="lucide:check" class="h-3.5 w-3.5 check-icon hidden" />
     </button>
   </div>
-  <pre class="code-shell__pre"><code>{code}</code></pre>
+  <div class="code-shell__body">
+    <Code
+      code={code}
+      lang={shikiLang}
+      themes={{ light: "github-light", dark: "github-dark" }}
+    />
+  </div>
 </div>
 
 <script is:inline>
