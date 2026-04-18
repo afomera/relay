@@ -178,37 +178,58 @@ h1{font-size:1.4rem}
         let query = req.uri().query().unwrap_or_default();
         let mut token = None;
         let mut got_state = None;
+        let mut error = None;
         for (k, v) in form_urlencoded::parse(query.as_bytes()) {
             match k.as_ref() {
                 "token" => token = Some(v.into_owned()),
                 "state" => got_state = Some(v.into_owned()),
+                "error" => error = Some(v.into_owned()),
                 _ => {}
             }
         }
-        let result = match (token, got_state) {
-            (Some(t), Some(s)) if s == expected_state => Ok(t),
-            (_, Some(s)) if s != expected_state => Err("state mismatch".to_string()),
-            _ => Err("callback missing token or state".to_string()),
+        let state_ok = got_state.as_deref() == Some(expected_state.as_str());
+        let result: Result<String, String> = if !state_ok {
+            Err("state mismatch".to_string())
+        } else {
+            match (token, error.as_deref()) {
+                (Some(t), _) => Ok(t),
+                (None, Some("cancelled")) => Err("cancelled in browser".to_string()),
+                (None, Some(e)) => Err(format!("auth error: {e}")),
+                _ => Err("callback missing token or state".to_string()),
+            }
         };
         let mut slot = tx.lock().await;
         if let Some(tx) = slot.take() {
             let _ = tx.send(result.clone());
         }
-        let body = if result.is_ok() {
-            page(
-                "authorized",
-                "authorized ✓",
-                "Token delivered to the CLI — you can close this tab.",
-            )
-        } else {
-            page(
-                "auth error",
-                "authorization failed",
-                "The CLI didn't accept the callback. Close this tab and retry.",
-            )
+        let (status, body) = match &result {
+            Ok(_) => (
+                StatusCode::OK,
+                page(
+                    "authorized",
+                    "authorized ✓",
+                    "Token delivered to the CLI — you can close this tab.",
+                ),
+            ),
+            Err(msg) if msg == "cancelled in browser" => (
+                StatusCode::OK,
+                page(
+                    "cancelled",
+                    "cancelled",
+                    "The CLI is no longer waiting — you can close this tab.",
+                ),
+            ),
+            Err(_) => (
+                StatusCode::BAD_REQUEST,
+                page(
+                    "auth error",
+                    "authorization failed",
+                    "The CLI didn't accept the callback. Close this tab and retry.",
+                ),
+            ),
         };
         Ok(Response::builder()
-            .status(if result.is_ok() { StatusCode::OK } else { StatusCode::BAD_REQUEST })
+            .status(status)
             .header("content-type", "text/html; charset=utf-8")
             .body(body)
             .expect("static response"))

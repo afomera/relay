@@ -22,7 +22,9 @@
     <button class="btn" type="submit">
       {{ crate::icons::icon("key")|safe }} authorize
     </button>
-    <a class="btn ghost" href="/">cancel</a>
+  </form>
+  <form method="post" action="/cli/authorize/cancel" class="stack">
+    <button class="btn ghost" type="submit">cancel</button>
   </form>
 </div>
 </body>

@@ -34,6 +34,7 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/dev/login", get(dev_login))
         .route("/cli/authorize", get(cli_authorize))
         .route("/cli/authorize/approve", post(cli_authorize_approve))
+        .route("/cli/authorize/cancel", post(cli_authorize_cancel))
         .route("/tokens", get(tokens_page).post(create_token))
         .route("/tokens/:id/delete", post(delete_token_route))
         .route("/reservations", get(reservations_page).post(create_reservation))
@@ -404,6 +405,27 @@ async fn cli_authorize_approve(State(state): State<AppState>, jar: PrivateCookie
         tok = urlencoding::encode(&plain),
         st = urlencoding::encode(cli_state),
     );
+    let jar = jar.remove(Cookie::from(CLI_RETURN_COOKIE));
+    (jar, Redirect::to(&redirect_url)).into_response()
+}
+
+/// Cancel a pending CLI auth: tells the local CLI listener so it can exit
+/// cleanly instead of sitting on the 5-minute timeout. No auth required —
+/// the cancel cookie is the only thing a malicious caller could touch, and
+/// the worst outcome is a "you cancelled" message in someone else's terminal.
+async fn cli_authorize_cancel(jar: PrivateCookieJar) -> Response {
+    let Some(raw) = jar.get(CLI_RETURN_COOKIE).map(|c| c.value().to_string()) else {
+        return (StatusCode::BAD_REQUEST, "no pending CLI login").into_response();
+    };
+    let Some((callback, cli_state)) = raw.split_once('\n') else {
+        return (StatusCode::BAD_REQUEST, "malformed pending CLI cookie").into_response();
+    };
+    if validate_loopback_callback(callback).is_err() {
+        return (StatusCode::BAD_REQUEST, "invalid callback").into_response();
+    }
+    let sep = if callback.contains('?') { '&' } else { '?' };
+    let redirect_url =
+        format!("{callback}{sep}error=cancelled&state={st}", st = urlencoding::encode(cli_state),);
     let jar = jar.remove(Cookie::from(CLI_RETURN_COOKIE));
     (jar, Redirect::to(&redirect_url)).into_response()
 }

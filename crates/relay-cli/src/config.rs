@@ -13,18 +13,32 @@ pub struct Config {
 }
 
 pub fn path() -> anyhow::Result<PathBuf> {
-    let dirs = ProjectDirs::from("dev", "relay", "relay")
+    // Reverse-DNS under `withrelay.dev` (the project's domain). On macOS this
+    // resolves to `~/Library/Application Support/dev.withrelay.relay/`.
+    let dirs = ProjectDirs::from("dev", "withrelay", "relay")
         .ok_or_else(|| anyhow::anyhow!("cannot resolve config dir"))?;
     Ok(dirs.config_dir().join("config.toml"))
 }
 
+/// Pre-0.0.5 config dir. Read-only fallback so existing users don't have to
+/// re-login. Drop once we're comfortable nobody has state left here.
+fn legacy_path() -> Option<PathBuf> {
+    ProjectDirs::from("dev", "relay", "relay").map(|d| d.config_dir().join("config.toml"))
+}
+
 pub fn load() -> anyhow::Result<Config> {
     let p = path()?;
-    if !p.exists() {
-        return Ok(Config::default());
+    if p.exists() {
+        let txt = fs::read_to_string(&p)?;
+        return Ok(toml::from_str(&txt)?);
     }
-    let txt = fs::read_to_string(&p)?;
-    Ok(toml::from_str(&txt)?)
+    if let Some(old) = legacy_path() {
+        if old.exists() {
+            let txt = fs::read_to_string(&old)?;
+            return Ok(toml::from_str(&txt)?);
+        }
+    }
+    Ok(Config::default())
 }
 
 pub fn save(cfg: &Config) -> anyhow::Result<()> {
