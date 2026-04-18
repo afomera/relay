@@ -109,53 +109,88 @@ pub async fn issue_wildcard(
             published.push((record, dns_value));
         }
     }
-    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-    {
-        let mut authzs = order.authorizations();
-        while let Some(result) = authzs.next().await {
-            let mut authz = result?;
-            if !matches!(authz.status, AuthorizationStatus::Pending) {
-                continue;
+    // Everything after the TXT upserts is wrapped so a single cleanup
+    // pass at the bottom deletes records regardless of success/failure.
+    // Without this, repeated failures (e.g. bad timing) left orphan TXTs
+    // piling up under `_acme-challenge.<apex>`.
+    let result: anyhow::Result<(String, rcgen::KeyPair)> = async {
+        // Let's Encrypt runs multi-perspective validation from 4+ regions;
+        // Cloudflare's edge can take ~15-30s to propagate an API write to
+        // every PoP. 30s keeps us comfortably past that window.
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        {
+            let mut authzs = order.authorizations();
+            while let Some(authz_result) = authzs.next().await {
+                let mut authz = authz_result?;
+                if !matches!(authz.status, AuthorizationStatus::Pending) {
+                    continue;
+                }
+                let Some(mut challenge) = authz.challenge(ChallengeType::Dns01) else {
+                    anyhow::bail!("ACME did not offer a dns-01 challenge");
+                };
+                challenge.set_ready().await?;
             }
-            let Some(mut challenge) = authz.challenge(ChallengeType::Dns01) else {
-                anyhow::bail!("ACME did not offer a dns-01 challenge");
-            };
-            challenge.set_ready().await?;
         }
+
+        let status = order.poll_ready(&RetryPolicy::default()).await?;
+        if !matches!(status, OrderStatus::Ready) {
+            // Pull authz details so the log explains what LE actually saw,
+            // rather than a bare "Invalid".
+            let mut authzs = order.authorizations();
+            while let Some(authz_result) = authzs.next().await {
+                match authz_result {
+                    Ok(authz) => {
+                        let ident = authz.identifier();
+                        let chal = authz
+                            .challenges
+                            .iter()
+                            .find(|c| matches!(c.r#type, ChallengeType::Dns01));
+                        tracing::warn!(
+                            identifier = ?ident,
+                            status = ?authz.status,
+                            challenge_status = ?chal.map(|c| c.status),
+                            error = ?chal.and_then(|c| c.error.as_ref()),
+                            "ACME authz diagnostic"
+                        );
+                    }
+                    Err(e) => tracing::warn!(?e, "failed to fetch authz on invalid order"),
+                }
+            }
+            anyhow::bail!("ACME order did not reach Ready state: {status:?}");
+        }
+
+        let kp = rcgen::KeyPair::generate()?;
+        let sans: Vec<String> = idents
+            .iter()
+            .map(|i| {
+                let Identifier::Dns(n) = i else { unreachable!() };
+                format!("*.{n}")
+            })
+            .collect();
+        let mut params = rcgen::CertificateParams::new(sans.clone())?;
+        // rcgen's default Subject CN is "rcgen self signed cert"; Let's
+        // Encrypt treats the CSR's CN as an identifier and rejects that
+        // literal string. Pin it to a SAN so the CN is an identified domain.
+        params.distinguished_name = rcgen::DistinguishedName::new();
+        params.distinguished_name.push(rcgen::DnType::CommonName, sans[0].clone());
+        let csr = params.serialize_request(&kp)?;
+        order.finalize_csr(csr.der()).await?;
+
+        let chain_pem = order.poll_certificate(&RetryPolicy::default()).await?;
+        Ok((chain_pem, kp))
     }
+    .await;
 
-    // Wait for the order to be ready.
-    let status = order.poll_ready(&RetryPolicy::default()).await?;
-    if !matches!(status, OrderStatus::Ready) {
-        anyhow::bail!("ACME order did not reach Ready state: {status:?}");
-    }
-
-    // Build our own key + CSR so we own the private key.
-    let kp = rcgen::KeyPair::generate()?;
-    let sans: Vec<String> = idents
-        .iter()
-        .map(|i| {
-            let Identifier::Dns(n) = i else { unreachable!() };
-            format!("*.{n}")
-        })
-        .collect();
-    let mut params = rcgen::CertificateParams::new(sans.clone())?;
-    // rcgen's default Subject CN is "rcgen self signed cert"; Let's Encrypt
-    // treats the CSR's CN as an identifier and rejects that literal string.
-    // Pin it to a SAN value so the CN is a valid identified domain.
-    params.distinguished_name = rcgen::DistinguishedName::new();
-    params.distinguished_name.push(rcgen::DnType::CommonName, sans[0].clone());
-    let csr = params.serialize_request(&kp)?;
-    order.finalize_csr(csr.der()).await?;
-
-    let chain_pem = order.poll_certificate(&RetryPolicy::default()).await?;
-
-    // Clean up DNS TXT records.
+    // Always clean up TXT records — orphan cleanup for failures, normal
+    // cleanup for success. Errors here are logged but don't mask the real
+    // issuance result.
     for (name, value) in &published {
         if let Err(e) = dns.delete_txt(name, value).await {
             tracing::warn!(?e, %name, "failed to delete ACME TXT record");
         }
     }
+
+    let (chain_pem, kp) = result?;
 
     // Without pulling in an x509 parser we approximate not_after. Let's Encrypt
     // issues 90-day certs; the renewal worker just uses its own 30-day horizon
