@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 
 # ---- build stage ----
-FROM rust:1.85-slim-bookworm AS build
+FROM rust:1.95-slim-bookworm AS build
 WORKDIR /src
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
