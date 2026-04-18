@@ -8,8 +8,8 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar, SameSite};
 use base64::Engine as _;
 use rand::RngCore;
+use relay_db as dao;
 use relay_db::models::{Organization, User};
-use relay_db::sqlite as dao;
 use relay_db::{Db, DbError};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -165,9 +165,16 @@ pub async fn complete_github_login(
 
     let github_id = user_json.get("id").and_then(|v| v.as_i64()).unwrap_or_default();
     let login = user_json.get("login").and_then(|v| v.as_str()).unwrap_or("user").to_string();
-    let email = user_json.get("email").and_then(|v| v.as_str()).map(str::to_string);
+    let mut email = user_json.get("email").and_then(|v| v.as_str()).map(str::to_string);
     let name = user_json.get("name").and_then(|v| v.as_str()).map(str::to_string);
     let avatar = user_json.get("avatar_url").and_then(|v| v.as_str()).map(str::to_string);
+
+    // /user only returns an email if the user has set a public one. Fall back to
+    // /user/emails (permitted by the user:email scope) and pick the primary
+    // verified address so we can always contact the user.
+    if email.is_none() {
+        email = fetch_primary_email(&client, &access_token).await;
+    }
 
     // 2.5. Enforce allowed_orgs if configured.
     if !github.allowed_orgs.is_empty() {
@@ -246,6 +253,39 @@ pub async fn complete_github_login(
     let jar = jar.add(cookie);
 
     Ok((jar, sid))
+}
+
+async fn fetch_primary_email(client: &reqwest::Client, access_token: &str) -> Option<String> {
+    let resp = match client
+        .get("https://api.github.com/user/emails?per_page=100")
+        .header("accept", "application/vnd.github+json")
+        .header("user-agent", "relayd")
+        .bearer_auth(access_token)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "github /user/emails fetch failed");
+            return None;
+        }
+    };
+    let emails: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "github /user/emails parse failed");
+            return None;
+        }
+    };
+    let arr = emails.as_array()?;
+    let primary_verified = arr.iter().find(|e| {
+        e.get("primary").and_then(|v| v.as_bool()).unwrap_or(false)
+            && e.get("verified").and_then(|v| v.as_bool()).unwrap_or(false)
+    });
+    let pick = primary_verified
+        .or_else(|| arr.iter().find(|e| e.get("verified").and_then(|v| v.as_bool()).unwrap_or(false)))
+        .or_else(|| arr.first());
+    pick.and_then(|e| e.get("email").and_then(|v| v.as_str()).map(str::to_string))
 }
 
 async fn unique_slug(db: &Db, base: &str) -> String {

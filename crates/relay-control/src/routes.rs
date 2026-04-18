@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar};
-use relay_db::sqlite as dao;
+use relay_db as dao;
 use serde::Deserialize;
 use uuid::Uuid;
 

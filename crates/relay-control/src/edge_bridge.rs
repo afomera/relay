@@ -2,7 +2,7 @@
 //! by `relay-db`. Used to wire the edge to real accounts + reservations.
 
 use async_trait::async_trait;
-use relay_db::{Db, sqlite as dao};
+use relay_db::{self as dao, Db};
 use relay_edge::{
     AuthError, AuthProvider, CaptureSink, HttpCapture, Principal, RecordError, ReservationError,
     ReservationStore, TunnelEvent, TunnelRecorder,

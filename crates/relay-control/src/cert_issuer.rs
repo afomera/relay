@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use relay_acme::{CertStore, Http01Pending, IssueOptions, issue_http01};
 use relay_db::Db;
-use relay_db::sqlite as dao;
+use relay_db as dao;
 
 pub struct CertIssuerCtx {
     pub db: Db,

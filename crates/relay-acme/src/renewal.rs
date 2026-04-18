@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use relay_db::Db;
-use relay_db::sqlite as dao;
+use relay_db as dao;
 use relay_dns::DnsProvider;
 
 use crate::issue::{IssueOptions, issue_wildcard};

@@ -182,7 +182,7 @@ async fn run_dev(args: Args) -> anyhow::Result<()> {
     };
     let db = Db::connect(&db_url).await?;
     db.migrate().await?;
-    let stale = relay_db::sqlite::mark_all_tunnels_disconnected(&db).await?;
+    let stale = relay_db::mark_all_tunnels_disconnected(&db).await?;
     tracing::info!(url = %db_url, stale_swept = stale, "dev database ready");
 
     // Random data key per process — fine for dev because we re-encrypt nothing
@@ -283,7 +283,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
 
     let db = Db::connect(&cfg.db.url).await?;
     db.migrate().await?;
-    let stale = relay_db::sqlite::mark_all_tunnels_disconnected(&db).await?;
+    let stale = relay_db::mark_all_tunnels_disconnected(&db).await?;
     tracing::info!(url = %cfg.db.url, stale_swept = stale, "db ready");
 
     // ---- Control plane ----

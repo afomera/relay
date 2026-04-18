@@ -1,8 +1,9 @@
-//! SQLite-backed DAL. All functions take `&Db` and dispatch on the enum.
+//! SQLite backend. All fns are `pub(crate)` — the crate-root dispatcher in
+//! `lib.rs` is the public surface.
 //!
-//! Keeping queries runtime-checked (no `query!` macro) avoids the compile-time
-//! DATABASE_URL requirement and makes a future Postgres backend easier — the
-//! same SQL string runs against both.
+//! Queries are runtime-checked (no `query!` macro): lets us avoid a
+//! compile-time `DATABASE_URL` and keeps the SQL strings close to the Postgres
+//! variants for easy parity review.
 
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -19,7 +20,7 @@ fn pool(db: &Db) -> &SqlitePool {
 // organizations + users + membership
 // ---------------------------------------------------------------------------
 
-pub async fn create_org(db: &Db, name: &str, slug: &str) -> Result<Organization, DbError> {
+pub(crate) async fn create_org(db: &Db, name: &str, slug: &str) -> Result<Organization, DbError> {
     let id = Uuid::new_v4();
     let now = now_unix();
     sqlx::query("INSERT INTO organizations (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
@@ -33,7 +34,10 @@ pub async fn create_org(db: &Db, name: &str, slug: &str) -> Result<Organization,
     Ok(Organization { id, name: name.to_string(), slug: slug.to_string(), created_at: now })
 }
 
-pub async fn find_user_by_github_id(db: &Db, github_id: i64) -> Result<Option<User>, DbError> {
+pub(crate) async fn find_user_by_github_id(
+    db: &Db,
+    github_id: i64,
+) -> Result<Option<User>, DbError> {
     let row = sqlx::query_as::<_, User>("SELECT * FROM users WHERE github_id = ?")
         .bind(github_id)
         .fetch_optional(pool(db))
@@ -41,7 +45,7 @@ pub async fn find_user_by_github_id(db: &Db, github_id: i64) -> Result<Option<Us
     Ok(row)
 }
 
-pub async fn upsert_github_user(
+pub(crate) async fn upsert_github_user(
     db: &Db,
     github_id: i64,
     login: &str,
@@ -90,7 +94,7 @@ pub async fn upsert_github_user(
     })
 }
 
-pub async fn add_org_member(
+pub(crate) async fn add_org_member(
     db: &Db,
     org_id: Uuid,
     user_id: Uuid,
@@ -107,7 +111,10 @@ pub async fn add_org_member(
     Ok(())
 }
 
-pub async fn primary_org_for_user(db: &Db, user_id: Uuid) -> Result<Option<Organization>, DbError> {
+pub(crate) async fn primary_org_for_user(
+    db: &Db,
+    user_id: Uuid,
+) -> Result<Option<Organization>, DbError> {
     let row = sqlx::query_as::<_, Organization>(
         "SELECT o.* FROM organizations o \
          JOIN org_members m ON m.org_id = o.id \
@@ -123,7 +130,7 @@ pub async fn primary_org_for_user(db: &Db, user_id: Uuid) -> Result<Option<Organ
 // sessions
 // ---------------------------------------------------------------------------
 
-pub async fn create_session(
+pub(crate) async fn create_session(
     db: &Db,
     user_id: Uuid,
     org_id: Uuid,
@@ -144,7 +151,7 @@ pub async fn create_session(
     Ok(id)
 }
 
-pub async fn lookup_session(db: &Db, id: Uuid) -> Result<Option<Session>, DbError> {
+pub(crate) async fn lookup_session(db: &Db, id: Uuid) -> Result<Option<Session>, DbError> {
     let row =
         sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE id = ? AND expires_at > ?")
             .bind(id)
@@ -154,7 +161,7 @@ pub async fn lookup_session(db: &Db, id: Uuid) -> Result<Option<Session>, DbErro
     Ok(row)
 }
 
-pub async fn delete_session(db: &Db, id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn delete_session(db: &Db, id: Uuid) -> Result<(), DbError> {
     sqlx::query("DELETE FROM sessions WHERE id = ?").bind(id).execute(pool(db)).await?;
     Ok(())
 }
@@ -163,7 +170,7 @@ pub async fn delete_session(db: &Db, id: Uuid) -> Result<(), DbError> {
 // api tokens
 // ---------------------------------------------------------------------------
 
-pub async fn create_api_token(
+pub(crate) async fn create_api_token(
     db: &Db,
     org_id: Uuid,
     user_id: Uuid,
@@ -187,7 +194,7 @@ pub async fn create_api_token(
     Ok(id)
 }
 
-pub async fn list_tokens_for_org(db: &Db, org_id: Uuid) -> Result<Vec<ApiToken>, DbError> {
+pub(crate) async fn list_tokens_for_org(db: &Db, org_id: Uuid) -> Result<Vec<ApiToken>, DbError> {
     let rows = sqlx::query_as::<_, ApiToken>(
         "SELECT * FROM api_tokens WHERE org_id = ? ORDER BY created_at DESC",
     )
@@ -197,7 +204,7 @@ pub async fn list_tokens_for_org(db: &Db, org_id: Uuid) -> Result<Vec<ApiToken>,
     Ok(rows)
 }
 
-pub async fn delete_token(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn delete_token(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), DbError> {
     let res = sqlx::query("DELETE FROM api_tokens WHERE id = ? AND org_id = ?")
         .bind(id)
         .bind(org_id)
@@ -209,7 +216,10 @@ pub async fn delete_token(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), DbError
     Ok(())
 }
 
-pub async fn find_token_by_hash(db: &Db, hashed: &str) -> Result<Option<ApiToken>, DbError> {
+pub(crate) async fn find_token_by_hash(
+    db: &Db,
+    hashed: &str,
+) -> Result<Option<ApiToken>, DbError> {
     let row = sqlx::query_as::<_, ApiToken>("SELECT * FROM api_tokens WHERE hashed_token = ?")
         .bind(hashed)
         .fetch_optional(pool(db))
@@ -217,15 +227,13 @@ pub async fn find_token_by_hash(db: &Db, hashed: &str) -> Result<Option<ApiToken
     Ok(row)
 }
 
-pub async fn list_all_api_tokens(db: &Db) -> Result<Vec<ApiToken>, DbError> {
-    // Used by the edge auth provider. See `DbAuthProvider` for why this exists
-    // as a full-scan method.
+pub(crate) async fn list_all_api_tokens(db: &Db) -> Result<Vec<ApiToken>, DbError> {
     let rows =
         sqlx::query_as::<_, ApiToken>("SELECT * FROM api_tokens").fetch_all(pool(db)).await?;
     Ok(rows)
 }
 
-pub async fn touch_token_use(db: &Db, id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn touch_token_use(db: &Db, id: Uuid) -> Result<(), DbError> {
     sqlx::query("UPDATE api_tokens SET last_used_at = ? WHERE id = ?")
         .bind(now_unix())
         .bind(id)
@@ -238,7 +246,7 @@ pub async fn touch_token_use(db: &Db, id: Uuid) -> Result<(), DbError> {
 // reservations
 // ---------------------------------------------------------------------------
 
-pub async fn create_reservation(
+pub(crate) async fn create_reservation(
     db: &Db,
     org_id: Uuid,
     label: &str,
@@ -256,7 +264,10 @@ pub async fn create_reservation(
     Ok(Reservation { id, org_id, label: label.to_string(), created_at: now })
 }
 
-pub async fn list_reservations_for_org(db: &Db, org_id: Uuid) -> Result<Vec<Reservation>, DbError> {
+pub(crate) async fn list_reservations_for_org(
+    db: &Db,
+    org_id: Uuid,
+) -> Result<Vec<Reservation>, DbError> {
     let rows = sqlx::query_as::<_, Reservation>(
         "SELECT * FROM reservations WHERE org_id = ? ORDER BY label",
     )
@@ -266,7 +277,7 @@ pub async fn list_reservations_for_org(db: &Db, org_id: Uuid) -> Result<Vec<Rese
     Ok(rows)
 }
 
-pub async fn delete_reservation(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn delete_reservation(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), DbError> {
     let res = sqlx::query("DELETE FROM reservations WHERE id = ? AND org_id = ?")
         .bind(id)
         .bind(org_id)
@@ -278,7 +289,7 @@ pub async fn delete_reservation(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), D
     Ok(())
 }
 
-pub async fn find_reservation_by_label(
+pub(crate) async fn find_reservation_by_label(
     db: &Db,
     label: &str,
 ) -> Result<Option<Reservation>, DbError> {
@@ -293,10 +304,7 @@ pub async fn find_reservation_by_label(
 // tunnels
 // ---------------------------------------------------------------------------
 
-/// Upsert a tunnel by its natural key `(org_id, hostname)`. Returns the
-/// canonical tunnel id — a reconnected CLI reuses the same row so captures
-/// accumulate under one tunnel and the dashboard doesn't fill with ghosts.
-pub async fn upsert_tunnel_by_hostname(
+pub(crate) async fn upsert_tunnel_by_hostname(
     db: &Db,
     org_id: Uuid,
     kind: &str,
@@ -348,9 +356,10 @@ pub async fn upsert_tunnel_by_hostname(
     Ok(id)
 }
 
-/// Bulk-delete every disconnected tunnel (and its captures via CASCADE) for
-/// an org. Returns the number of rows removed.
-pub async fn delete_disconnected_tunnels_for_org(db: &Db, org_id: Uuid) -> Result<u64, DbError> {
+pub(crate) async fn delete_disconnected_tunnels_for_org(
+    db: &Db,
+    org_id: Uuid,
+) -> Result<u64, DbError> {
     let res = sqlx::query("DELETE FROM tunnels WHERE org_id = ? AND state = 'disconnected'")
         .bind(org_id)
         .execute(pool(db))
@@ -358,8 +367,11 @@ pub async fn delete_disconnected_tunnels_for_org(db: &Db, org_id: Uuid) -> Resul
     Ok(res.rows_affected())
 }
 
-/// Delete a tunnel row (and, via FK ON DELETE CASCADE, its captures).
-pub async fn delete_tunnel_for_org(db: &Db, id: Uuid, org_id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn delete_tunnel_for_org(
+    db: &Db,
+    id: Uuid,
+    org_id: Uuid,
+) -> Result<(), DbError> {
     let res = sqlx::query("DELETE FROM tunnels WHERE id = ? AND org_id = ?")
         .bind(id)
         .bind(org_id)
@@ -371,9 +383,7 @@ pub async fn delete_tunnel_for_org(db: &Db, id: Uuid, org_id: Uuid) -> Result<()
     Ok(())
 }
 
-/// Bump `last_seen_at` to now. Called on every capture so the dashboard's
-/// time-ago column reflects actual traffic, not just the last (dis)connect.
-pub async fn touch_tunnel_last_seen(db: &Db, id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn touch_tunnel_last_seen(db: &Db, id: Uuid) -> Result<(), DbError> {
     sqlx::query("UPDATE tunnels SET last_seen_at = ? WHERE id = ?")
         .bind(now_unix())
         .bind(id)
@@ -382,7 +392,7 @@ pub async fn touch_tunnel_last_seen(db: &Db, id: Uuid) -> Result<(), DbError> {
     Ok(())
 }
 
-pub async fn mark_tunnel_disconnected(db: &Db, id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn mark_tunnel_disconnected(db: &Db, id: Uuid) -> Result<(), DbError> {
     sqlx::query("UPDATE tunnels SET state = 'disconnected', last_seen_at = ? WHERE id = ?")
         .bind(now_unix())
         .bind(id)
@@ -391,10 +401,7 @@ pub async fn mark_tunnel_disconnected(db: &Db, id: Uuid) -> Result<(), DbError> 
     Ok(())
 }
 
-/// Bulk-mark every active tunnel as disconnected. Called at server startup so
-/// rows left over from a previous (possibly crashed) process don't show up as
-/// live in the dashboard.
-pub async fn mark_all_tunnels_disconnected(db: &Db) -> Result<u64, DbError> {
+pub(crate) async fn mark_all_tunnels_disconnected(db: &Db) -> Result<u64, DbError> {
     let res = sqlx::query(
         "UPDATE tunnels SET state = 'disconnected', last_seen_at = ? WHERE state = 'active'",
     )
@@ -404,9 +411,9 @@ pub async fn mark_all_tunnels_disconnected(db: &Db) -> Result<u64, DbError> {
     Ok(res.rows_affected())
 }
 
-pub async fn list_tunnels_for_org(db: &Db, org_id: Uuid) -> Result<Vec<Tunnel>, DbError> {
-    // Active rows first, then by recency. CASE ordering works on both SQLite
-    // and Postgres without driver-specific syntax.
+pub(crate) async fn list_tunnels_for_org(db: &Db, org_id: Uuid) -> Result<Vec<Tunnel>, DbError> {
+    // Active rows first, then by recency. CASE ordering is portable across
+    // SQLite and Postgres.
     let rows = sqlx::query_as::<_, Tunnel>(
         "SELECT * FROM tunnels WHERE org_id = ? \
          ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, last_seen_at DESC \
@@ -422,7 +429,7 @@ pub async fn list_tunnels_for_org(db: &Db, org_id: Uuid) -> Result<Vec<Tunnel>, 
 // custom domains
 // ---------------------------------------------------------------------------
 
-pub async fn create_custom_domain(
+pub(crate) async fn create_custom_domain(
     db: &Db,
     org_id: Uuid,
     hostname: &str,
@@ -450,7 +457,10 @@ pub async fn create_custom_domain(
     })
 }
 
-pub async fn list_custom_domains(db: &Db, org_id: Uuid) -> Result<Vec<CustomDomain>, DbError> {
+pub(crate) async fn list_custom_domains(
+    db: &Db,
+    org_id: Uuid,
+) -> Result<Vec<CustomDomain>, DbError> {
     let rows = sqlx::query_as::<_, CustomDomain>(
         "SELECT * FROM custom_domains WHERE org_id = ? ORDER BY hostname",
     )
@@ -460,7 +470,7 @@ pub async fn list_custom_domains(db: &Db, org_id: Uuid) -> Result<Vec<CustomDoma
     Ok(rows)
 }
 
-pub async fn mark_custom_domain_verified(db: &Db, id: Uuid) -> Result<(), DbError> {
+pub(crate) async fn mark_custom_domain_verified(db: &Db, id: Uuid) -> Result<(), DbError> {
     sqlx::query("UPDATE custom_domains SET verified_at = ? WHERE id = ?")
         .bind(now_unix())
         .bind(id)
@@ -469,7 +479,7 @@ pub async fn mark_custom_domain_verified(db: &Db, id: Uuid) -> Result<(), DbErro
     Ok(())
 }
 
-pub async fn find_custom_domain_for_org(
+pub(crate) async fn find_custom_domain_for_org(
     db: &Db,
     id: Uuid,
     org_id: Uuid,
@@ -484,7 +494,10 @@ pub async fn find_custom_domain_for_org(
     Ok(row)
 }
 
-pub async fn find_custom_domain(db: &Db, hostname: &str) -> Result<Option<CustomDomain>, DbError> {
+pub(crate) async fn find_custom_domain(
+    db: &Db,
+    hostname: &str,
+) -> Result<Option<CustomDomain>, DbError> {
     let row = sqlx::query_as::<_, CustomDomain>("SELECT * FROM custom_domains WHERE hostname = ?")
         .bind(hostname)
         .fetch_optional(pool(db))
@@ -496,7 +509,7 @@ pub async fn find_custom_domain(db: &Db, hostname: &str) -> Result<Option<Custom
 // certs
 // ---------------------------------------------------------------------------
 
-pub async fn upsert_cert(
+pub(crate) async fn upsert_cert(
     db: &Db,
     hostname: &str,
     cert_chain_pem: &str,
@@ -517,7 +530,7 @@ pub async fn upsert_cert(
     Ok(id)
 }
 
-pub async fn latest_cert_for(db: &Db, hostname: &str) -> Result<Option<Cert>, DbError> {
+pub(crate) async fn latest_cert_for(db: &Db, hostname: &str) -> Result<Option<Cert>, DbError> {
     let row = sqlx::query_as::<_, Cert>(
         "SELECT * FROM certs WHERE hostname = ? ORDER BY created_at DESC LIMIT 1",
     )
@@ -527,7 +540,7 @@ pub async fn latest_cert_for(db: &Db, hostname: &str) -> Result<Option<Cert>, Db
     Ok(row)
 }
 
-pub async fn list_all_certs(db: &Db) -> Result<Vec<Cert>, DbError> {
+pub(crate) async fn list_all_certs(db: &Db) -> Result<Vec<Cert>, DbError> {
     let rows = sqlx::query_as::<_, Cert>("SELECT * FROM certs ORDER BY not_after ASC")
         .fetch_all(pool(db))
         .await?;
@@ -538,10 +551,8 @@ pub async fn list_all_certs(db: &Db) -> Result<Vec<Cert>, DbError> {
 // inspection captures
 // ---------------------------------------------------------------------------
 
-/// Single-shot insert for the inspector path: write everything we know about
-/// a completed request/response in one row. Returns the new id.
 #[allow(clippy::too_many_arguments)]
-pub async fn insert_full_capture(
+pub(crate) async fn insert_full_capture(
     db: &Db,
     tunnel_id: Uuid,
     request_id: Uuid,
@@ -587,9 +598,7 @@ pub async fn insert_full_capture(
     Ok(id)
 }
 
-/// Look up a tunnel scoped to an org, so the dashboard can't accidentally
-/// expose tunnels from other orgs via URL guessing.
-pub async fn find_tunnel_for_org(
+pub(crate) async fn find_tunnel_for_org(
     db: &Db,
     org_id: Uuid,
     tunnel_id: Uuid,
@@ -602,7 +611,7 @@ pub async fn find_tunnel_for_org(
     Ok(row)
 }
 
-pub async fn insert_capture(
+pub(crate) async fn insert_capture(
     db: &Db,
     tunnel_id: Uuid,
     request_id: Uuid,
@@ -627,7 +636,7 @@ pub async fn insert_capture(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn complete_capture(
+pub(crate) async fn complete_capture(
     db: &Db,
     id: Uuid,
     status: i64,
@@ -656,7 +665,7 @@ pub async fn complete_capture(
     Ok(())
 }
 
-pub async fn list_captures(
+pub(crate) async fn list_captures(
     db: &Db,
     tunnel_id: Uuid,
     limit: i64,
@@ -671,7 +680,10 @@ pub async fn list_captures(
     Ok(rows)
 }
 
-pub async fn get_capture(db: &Db, id: Uuid) -> Result<Option<InspectionCapture>, DbError> {
+pub(crate) async fn get_capture(
+    db: &Db,
+    id: Uuid,
+) -> Result<Option<InspectionCapture>, DbError> {
     let row =
         sqlx::query_as::<_, InspectionCapture>("SELECT * FROM inspection_captures WHERE id = ?")
             .bind(id)
@@ -680,8 +692,10 @@ pub async fn get_capture(db: &Db, id: Uuid) -> Result<Option<InspectionCapture>,
     Ok(row)
 }
 
-/// Bulk-clear every capture for a given tunnel.
-pub async fn clear_captures_for_tunnel(db: &Db, tunnel_id: Uuid) -> Result<u64, DbError> {
+pub(crate) async fn clear_captures_for_tunnel(
+    db: &Db,
+    tunnel_id: Uuid,
+) -> Result<u64, DbError> {
     let res = sqlx::query("DELETE FROM inspection_captures WHERE tunnel_id = ?")
         .bind(tunnel_id)
         .execute(pool(db))
@@ -689,7 +703,7 @@ pub async fn clear_captures_for_tunnel(db: &Db, tunnel_id: Uuid) -> Result<u64, 
     Ok(res.rows_affected())
 }
 
-pub async fn prune_captures(db: &Db, older_than: i64) -> Result<u64, DbError> {
+pub(crate) async fn prune_captures(db: &Db, older_than: i64) -> Result<u64, DbError> {
     let res = sqlx::query("DELETE FROM inspection_captures WHERE started_at < ?")
         .bind(older_than)
         .execute(pool(db))
@@ -701,7 +715,7 @@ pub async fn prune_captures(db: &Db, older_than: i64) -> Result<u64, DbError> {
 // audit
 // ---------------------------------------------------------------------------
 
-pub async fn log_audit(
+pub(crate) async fn log_audit(
     db: &Db,
     org_id: Uuid,
     actor_user_id: Option<Uuid>,
