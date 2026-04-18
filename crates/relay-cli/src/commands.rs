@@ -239,9 +239,7 @@ pub mod http {
         // Fail fast with a useful message before we burn cycles on a QUIC
         // handshake that would just be rejected by the server anyway.
         if ctx.token.is_empty() {
-            anyhow::bail!(
-                "not signed in — run `relay auth login` (or pass --token)"
-            );
+            anyhow::bail!("not signed in — run `relay auth login` (or pass --token)");
         }
         // --domain shadows --hostname when both set.
         let mut desired = domain.or(hostname);
