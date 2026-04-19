@@ -2,7 +2,7 @@
 
 use axum::Router;
 use axum::extract::{Form, Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar};
@@ -49,6 +49,7 @@ pub fn router(state: AppState) -> Router {
         .route("/tunnels/:tid/captures/:cid", get(capture_detail))
         .route("/tunnels/:tid/captures/:cid/panel", get(capture_panel))
         .route("/_static/app.css", get(static_css))
+        .route("/_static/app.js", get(static_app_js))
         .route("/_static/captures.js", get(static_captures_js))
         .route("/events/tunnels", get(sse_tunnel_events))
         .route("/tunnels/:id/events", get(sse_tunnel_captures))
@@ -105,6 +106,23 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
+/// True when the request was issued by htmx (which sends `HX-Request: true`).
+/// Lets row-action handlers return an empty 200 for in-place row removal
+/// while keeping the Redirect fallback for non-JS clients.
+fn is_htmx(headers: &HeaderMap) -> bool {
+    headers.get("HX-Request").is_some()
+}
+
+/// Empty 200 for htmx callers (triggers the client-side row swap); 303 for
+/// everyone else so a plain form submission still lands on the list page.
+fn htmx_or_redirect(headers: &HeaderMap, redirect_to: &str) -> Response {
+    if is_htmx(headers) {
+        StatusCode::OK.into_response()
+    } else {
+        Redirect::to(redirect_to).into_response()
+    }
+}
+
 async fn static_css() -> Response {
     const CSS: &str = include_str!("../assets/app.css");
     // no-cache in dev so edits take effect on refresh; prod can flip this to
@@ -123,6 +141,15 @@ async fn static_captures_js() -> Response {
         .header("cache-control", "no-cache, must-revalidate")
         .body(axum::body::Body::from(JS))
         .expect("static captures.js response")
+}
+
+async fn static_app_js() -> Response {
+    const JS: &str = include_str!("../assets/app.js");
+    Response::builder()
+        .header("content-type", "application/javascript; charset=utf-8")
+        .header("cache-control", "no-cache, must-revalidate")
+        .body(axum::body::Body::from(JS))
+        .expect("static app.js response")
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +194,7 @@ async fn delete_disconnected_route(
 async fn delete_tunnel_route(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Response {
     let AuthedUser { org, .. } = match require_auth(&state, &jar).await {
@@ -186,7 +214,7 @@ async fn delete_tunnel_route(
         }
     }
     let _ = dao::delete_tunnel_for_org(&state.db, id, org.id).await;
-    Redirect::to("/").into_response()
+    htmx_or_redirect(&headers, "/")
 }
 
 async fn clear_captures_route(
@@ -583,6 +611,7 @@ async fn create_token(
 async fn delete_token_route(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Response {
     let AuthedUser { org, .. } = match require_auth(&state, &jar).await {
@@ -590,7 +619,7 @@ async fn delete_token_route(
         Err(r) => return r,
     };
     let _ = dao::delete_token(&state.db, id, org.id).await;
-    Redirect::to("/tokens").into_response()
+    htmx_or_redirect(&headers, "/tokens")
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +667,7 @@ async fn create_reservation(
 async fn delete_reservation_route(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Response {
     let AuthedUser { org, .. } = match require_auth(&state, &jar).await {
@@ -645,7 +675,7 @@ async fn delete_reservation_route(
         Err(r) => return r,
     };
     let _ = dao::delete_reservation(&state.db, id, org.id).await;
-    Redirect::to("/reservations").into_response()
+    htmx_or_redirect(&headers, "/reservations")
 }
 
 fn valid_label(s: &str) -> bool {
@@ -812,6 +842,7 @@ async fn verify_domain(
 async fn delete_domain(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Response {
     let _ = match require_auth(&state, &jar).await {
@@ -819,7 +850,7 @@ async fn delete_domain(
         Err(r) => return r,
     };
     let _ = dao::delete_custom_domain_by_id(&state.db, id).await;
-    Redirect::to("/domains").into_response()
+    htmx_or_redirect(&headers, "/domains")
 }
 
 fn valid_domain(s: &str) -> bool {

@@ -47,7 +47,10 @@
             <a class="icon-btn" href="/tunnels/{{ t.id }}" title="inspect">{{ crate::icons::icon("search")|safe }}</a>
             {% if t.state != "active" %}
             <form method="post" action="/tunnels/{{ t.id }}/delete" style="display:inline"
-                  onsubmit="return confirm('Delete this tunnel and its captured requests?');">
+                  hx-post="/tunnels/{{ t.id }}/delete"
+                  hx-target="closest tr"
+                  hx-swap="outerHTML swap:200ms"
+                  hx-confirm="Delete this tunnel and its captured requests?">
               <button class="icon-btn danger" type="submit" title="delete">{{ crate::icons::icon("trash")|safe }}</button>
             </form>
             {% endif %}

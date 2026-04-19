@@ -556,6 +556,48 @@ table.kv-table .kv-value { color: var(--atlas-text-primary); }
 .auth-card .btn { width: 100%; justify-content: center; }
 .auth-card .note { color: var(--atlas-text-muted); font-size: 0.78rem; margin-top: 1rem; }
 
+/* htmx swap animations: fade rows out as they're deleted. The
+   `.htmx-swapping` class is applied for the duration of `swap:<ms>`. */
+tr.htmx-swapping,
+.capture-row.htmx-swapping {
+  opacity: 0;
+  transform: translateX(10px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+/* error toast — rendered into #toast-host on htmx:responseError. */
+#toast-host {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 100;
+  pointer-events: none;
+}
+#toast-host .toast {
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--atlas-status-error) 14%, var(--atlas-surface-1));
+  border: 1px solid color-mix(in srgb, var(--atlas-status-error) 45%, transparent);
+  color: var(--atlas-text-primary);
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  max-width: 26rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  animation: toast-in 140ms ease-out;
+}
+#toast-host .toast.leaving {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* utility */
 
 .muted { color: var(--atlas-text-muted); }

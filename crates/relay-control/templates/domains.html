@@ -68,7 +68,10 @@
             </form>
             {% endif %}
             <form method="post" action="/domains/{{ d.id }}/delete" style="display:inline"
-                  onsubmit="return confirm('Remove {{ d.hostname }}?');">
+                  hx-post="/domains/{{ d.id }}/delete"
+                  hx-target="closest tr"
+                  hx-swap="outerHTML swap:200ms"
+                  hx-confirm="Remove {{ d.hostname }}?">
               <button class="icon-btn danger" type="submit" title="remove">{{ crate::icons::icon("trash")|safe }}</button>
             </form>
           </div>
