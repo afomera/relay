@@ -56,7 +56,7 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
         let (tcp, remote) = match listener.accept().await {
             Ok(x) => x,
             Err(e) => {
-                tracing::warn!(?e, "tcp accept");
+                tracing::warn!(e = %format!("{e:#}"), "tcp accept");
                 continue;
             }
         };
@@ -76,7 +76,7 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
                 .serve_connection_with_upgrades(TokioIo::new(tcp), hyper_service)
                 .await
             {
-                tracing::debug!(?e, %remote, "connection ended");
+                tracing::debug!(e = %format!("{e:#}"), %remote, "connection ended");
             }
         });
     }
@@ -101,7 +101,7 @@ pub(crate) async fn handle(
     match handle_inner(state, remote, req).await {
         Ok(resp) => resp,
         Err(e) => {
-            tracing::warn!(?e, "ingress error");
+            tracing::warn!(e = %format!("{e:#}"), "ingress error");
             error_page(StatusCode::BAD_GATEWAY, &format!("relay error: {e}"))
         }
     }
@@ -149,7 +149,7 @@ async fn handle_inner(
             use tower::ServiceExt;
             let svc = router.clone();
             return Ok(svc.oneshot(req).await.unwrap_or_else(|e| {
-                tracing::warn!(?e, "admin router errored");
+                tracing::warn!(e = %format!("{e:#}"), "admin router errored");
                 error_page(StatusCode::INTERNAL_SERVER_ERROR, "dashboard unavailable")
             }));
         }
@@ -346,7 +346,7 @@ async fn inspected_path(
     };
     tokio::spawn(async move {
         if let Err(e) = sink.record(capture).await {
-            tracing::warn!(?e, "capture sink record failed");
+            tracing::warn!(e = %format!("{e:#}"), "capture sink record failed");
         }
     });
 
@@ -537,7 +537,7 @@ async fn upgrade_path(
         let upgraded = match on_upgrade.await {
             Ok(u) => u,
             Err(e) => {
-                tracing::debug!(?e, "upgrade future failed");
+                tracing::debug!(e = %format!("{e:#}"), "upgrade future failed");
                 return;
             }
         };

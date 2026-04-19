@@ -827,7 +827,7 @@ async fn verify_domain(
         tokio::spawn(async move {
             let res = issuer.ensure_cert(&hostname, slug.as_deref()).await;
             if let Err(e) = res {
-                tracing::warn!(%hostname, ?e, "custom-domain cert issuance failed");
+                tracing::warn!(%hostname, e = %format!("{e:#}"), "custom-domain cert issuance failed");
             }
         });
     } else {

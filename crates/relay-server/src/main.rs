@@ -369,7 +369,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("decode data key: {e}"))?;
     let cert_store = Arc::new(DbCertStore::new(db.clone(), data_key_bytes));
     if let Err(e) = cert_store.refresh().await {
-        tracing::warn!(?e, "initial cert-store refresh failed");
+        tracing::warn!(e = %format!("{e:#}"), "initial cert-store refresh failed");
     }
 
     let fallback = {
@@ -424,7 +424,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         let issuer = issuer.clone();
         tokio::spawn(async move {
             if let Err(e) = issuer.ensure_cert(&host, None).await {
-                tracing::warn!(%host, ?e, "admin hostname cert issuance failed");
+                tracing::warn!(%host, e = %format!("{e:#}"), "admin hostname cert issuance failed");
             }
         });
     }
@@ -449,7 +449,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
             };
             tokio::spawn(async move {
                 if let Err(e) = worker.run().await {
-                    tracing::error!(?e, "renewal worker exited");
+                    tracing::error!(e = %format!("{e:#}"), "renewal worker exited");
                 }
             });
         } else {

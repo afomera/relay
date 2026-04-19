@@ -64,7 +64,7 @@ pub async fn run_listener(
                 let (mut tcp, remote) = match accept {
                     Ok(x) => x,
                     Err(e) => {
-                        tracing::warn!(?e, "tcp accept");
+                        tracing::warn!(e = %format!("{e:#}"), "tcp accept");
                         continue;
                     }
                 };

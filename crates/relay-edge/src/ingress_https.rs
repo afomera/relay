@@ -50,7 +50,7 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
         let (tcp, remote) = match listener.accept().await {
             Ok(x) => x,
             Err(e) => {
-                tracing::warn!(?e, "tcp accept");
+                tracing::warn!(e = %format!("{e:#}"), "tcp accept");
                 continue;
             }
         };
@@ -60,7 +60,7 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
             let tls = match acceptor.accept(tcp).await {
                 Ok(t) => t,
                 Err(e) => {
-                    tracing::debug!(?e, %remote, "tls handshake failed");
+                    tracing::debug!(e = %format!("{e:#}"), %remote, "tls handshake failed");
                     return;
                 }
             };
@@ -81,7 +81,7 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
                 .serve_connection_with_upgrades(TokioIo::new(tls), hyper_service)
                 .await
             {
-                tracing::debug!(?e, %remote, "connection ended");
+                tracing::debug!(e = %format!("{e:#}"), %remote, "connection ended");
             }
         });
     }

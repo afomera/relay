@@ -24,7 +24,7 @@ pub async fn accept_and_proxy(
             | Err(quinn::ConnectionError::ConnectionClosed(_))
             | Err(quinn::ConnectionError::TimedOut) => return Ok(()),
             Err(e) => {
-                tracing::warn!(?e, "accept_bi failed");
+                tracing::warn!(e = %format!("{e:#}"), "accept_bi failed");
                 return Err(e.into());
             }
         };
@@ -32,7 +32,7 @@ pub async fn accept_and_proxy(
         let ev = events.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_stream(send, recv, local_port, client, ev).await {
-                tracing::warn!(?e, "stream proxy failed");
+                tracing::warn!(e = %format!("{e:#}"), "stream proxy failed");
             }
         });
     }
@@ -82,7 +82,7 @@ async fn proxy_tcp(
     let mut tcp = match TcpStream::connect(("127.0.0.1", local_port)).await {
         Ok(t) => t,
         Err(e) => {
-            tracing::warn!(?e, "failed to reach local tcp service");
+            tracing::warn!(e = %format!("{e:#}"), "failed to reach local tcp service");
             let _ = send.finish();
             return Ok(());
         }

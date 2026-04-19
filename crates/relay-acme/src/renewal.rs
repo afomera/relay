@@ -34,7 +34,7 @@ impl RenewalWorker {
     pub async fn run(self) -> anyhow::Result<()> {
         if let Err(e) = self.tick().await {
             tracing::warn!(
-                ?e,
+                e = %format!("{e:#}"),
                 "initial renewal tick failed — HTTPS will use the self-signed fallback until the next attempt"
             );
         }
@@ -43,7 +43,7 @@ impl RenewalWorker {
         loop {
             ticker.tick().await;
             if let Err(e) = self.tick().await {
-                tracing::warn!(?e, "renewal tick failed");
+                tracing::warn!(e = %format!("{e:#}"), "renewal tick failed");
             }
         }
     }
@@ -177,14 +177,14 @@ impl RenewalWorker {
             let existing = match dao::latest_cert_for(&self.db, &wildcard_name).await {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::warn!(?e, hostname = %cd.hostname, "cert lookup failed");
+                    tracing::warn!(e = %format!("{e:#}"), hostname = %cd.hostname, "cert lookup failed");
                     continue;
                 }
             };
             let apex_existing = match dao::latest_cert_for(&self.db, &cd.hostname).await {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::warn!(?e, hostname = %cd.hostname, "apex cert lookup failed");
+                    tracing::warn!(e = %format!("{e:#}"), hostname = %cd.hostname, "apex cert lookup failed");
                     continue;
                 }
             };
@@ -211,7 +211,7 @@ impl RenewalWorker {
                     )
                     .await
                     {
-                        tracing::warn!(?e, hostname = %cd.hostname, "apex backfill failed");
+                        tracing::warn!(e = %format!("{e:#}"), hostname = %cd.hostname, "apex backfill failed");
                     }
                 }
                 continue;
@@ -252,11 +252,11 @@ impl RenewalWorker {
                     )
                     .await;
                     if let Err(e) = r1.or(r2) {
-                        tracing::warn!(?e, hostname = %cd.hostname, "custom wildcard persist failed");
+                        tracing::warn!(e = %format!("{e:#}"), hostname = %cd.hostname, "custom wildcard persist failed");
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(?e, hostname = %cd.hostname, "custom wildcard issuance failed");
+                    tracing::warn!(e = %format!("{e:#}"), hostname = %cd.hostname, "custom wildcard issuance failed");
                 }
             }
         }

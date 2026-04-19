@@ -162,7 +162,7 @@ pub async fn issue_wildcard(
                             "ACME authz diagnostic"
                         );
                     }
-                    Err(e) => tracing::warn!(?e, "failed to fetch authz on invalid order"),
+                    Err(e) => tracing::warn!(e = %format!("{e:#}"), "failed to fetch authz on invalid order"),
                 }
             }
             anyhow::bail!("ACME order did not reach Ready state: {status:?}");
@@ -197,7 +197,7 @@ pub async fn issue_wildcard(
     // issuance result.
     for (name, value) in &published {
         if let Err(e) = dns.delete_txt(name, value).await {
-            tracing::warn!(?e, %name, "failed to delete ACME TXT record");
+            tracing::warn!(e = %format!("{e:#}"), %name, "failed to delete ACME TXT record");
         }
     }
 
@@ -323,7 +323,7 @@ pub async fn issue_dns01_custom(
                             "ACME authz diagnostic (custom wildcard)"
                         );
                     }
-                    Err(e) => tracing::warn!(?e, "failed to fetch authz on invalid order"),
+                    Err(e) => tracing::warn!(e = %format!("{e:#}"), "failed to fetch authz on invalid order"),
                 }
             }
             anyhow::bail!("ACME order did not reach Ready state: {status:?}");
@@ -350,7 +350,7 @@ pub async fn issue_dns01_custom(
 
     for (name, value) in &published {
         if let Err(e) = dns.delete_txt(name, value).await {
-            tracing::warn!(?e, %name, "failed to delete ACME TXT record");
+            tracing::warn!(e = %format!("{e:#}"), %name, "failed to delete ACME TXT record");
         }
     }
 

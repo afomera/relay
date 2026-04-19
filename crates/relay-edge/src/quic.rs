@@ -32,10 +32,10 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
             match incoming.await {
                 Ok(conn) => {
                     if let Err(e) = handle_connection(conn, cfg, reg, pool).await {
-                        tracing::warn!(?e, "quic connection ended with error");
+                        tracing::warn!(e = %format!("{e:#}"), "quic connection ended with error");
                     }
                 }
-                Err(e) => tracing::warn!(?e, "failed to accept quic connection"),
+                Err(e) => tracing::warn!(e = %format!("{e:#}"), "failed to accept quic connection"),
             }
         });
     }
@@ -223,7 +223,7 @@ async fn handle_register(
     {
         Ok(id) => id,
         Err(e) => {
-            tracing::warn!(?e, "recorder failed; generating fallback id");
+            tracing::warn!(e = %format!("{e:#}"), "recorder failed; generating fallback id");
             Uuid::new_v4()
         }
     };
@@ -231,7 +231,7 @@ async fn handle_register(
     let password_hash = match hash_password(req.password.as_deref()) {
         Ok(h) => h,
         Err(e) => {
-            tracing::warn!(?e, "failed to hash tunnel password");
+            tracing::warn!(e = %format!("{e:#}"), "failed to hash tunnel password");
             reject(send, req.req_id, "password hashing failed".into()).await?;
             return Ok(());
         }
@@ -305,7 +305,7 @@ async fn handle_tcp_register(
     {
         Ok(id) => id,
         Err(e) => {
-            tracing::warn!(?e, "recorder failed; generating fallback id");
+            tracing::warn!(e = %format!("{e:#}"), "recorder failed; generating fallback id");
             Uuid::new_v4()
         }
     };
@@ -334,7 +334,7 @@ async fn handle_tcp_register(
     tokio::spawn(async move {
         if let Err(e) = crate::tcp::run_listener(cfg_cl, tunnel_id, conn_cl, port, cancel_rx).await
         {
-            tracing::warn!(?e, port, "tcp listener exited");
+            tracing::warn!(e = %format!("{e:#}"), port, "tcp listener exited");
         }
     });
 
