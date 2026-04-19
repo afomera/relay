@@ -35,6 +35,12 @@ const features = [
     body: "Free and open source. Built in Rust. Use it, fork it, ship it.",
   },
 ];
+
+const installSnippet = `brew tap afomera/relay https://github.com/afomera/relay.git && brew install relay
+
+relay auth login   # opens your browser to sign in & authorize the CLI
+relay http 3000
+# → https://bright-otter.temporary.sharedwithrelay.com`;
 ---
 
 <Layout>
@@ -69,15 +75,7 @@ const features = [
     </div>
 
     <div class="mt-12 max-w-3xl">
-      <CodeBlock
-        lang="sh"
-        code={`brew tap afomera/relay https://github.com/afomera/relay.git
-brew install relay
-
-relay auth login   # opens your browser to sign in & authorize the CLI
-relay http 3000
-# → https://bright-otter.temporary.sharedwithrelay.com`}
-      />
+      <CodeBlock lang="sh" code={installSnippet} />
     </div>
   </section>
 
@@ -90,28 +88,102 @@ relay http 3000
           <Icon name="lucide:arrow-right" class="h-3.5 w-3.5" />
         </a>
       </div>
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {
-          features.map((f) => (
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-6">
+        <div
+          class="rounded-xl border border-subtle p-6 sm:col-span-4 sm:p-8 transition hover:border-[color:var(--color-accent-500)]"
+          style="background-color: var(--bg-elevated);"
+        >
+          <div
+            class="mb-5 inline-flex size-10 items-center justify-center rounded-md"
+            style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
+          >
+            <Icon name="lucide:shield-check" class="size-5" />
+          </div>
+          <h3 class="mb-2 text-lg font-semibold tracking-tight">Fully self-hostable</h3>
+          <p class="max-w-[48ch] text-sm text-muted leading-relaxed text-pretty">
+            One binary. SQLite or Postgres. Pluggable DNS provider for wildcard TLS. Run the
+            control plane on your own infrastructure and keep your tunnel traffic where you
+            trust it.
+          </p>
+        </div>
+        <div
+          class="rounded-xl border border-subtle p-6 sm:col-span-2 sm:p-8 transition hover:border-[color:var(--color-accent-500)]"
+          style="background-color: var(--bg-elevated);"
+        >
+          <div
+            class="mb-5 inline-flex size-10 items-center justify-center rounded-md"
+            style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
+          >
+            <Icon name="lucide:zap" class="size-5" />
+          </div>
+          <h3 class="mb-2 text-lg font-semibold tracking-tight">QUIC under the hood</h3>
+          <p class="text-sm text-muted leading-relaxed text-pretty">
+            Low latency, stream multiplexing, and resilient reconnects across flaky networks.
+          </p>
+        </div>
+        <div
+          class="rounded-xl border border-subtle p-5 sm:col-span-2 transition hover:border-[color:var(--color-accent-500)]"
+          style="background-color: var(--bg-elevated);"
+        >
+          <div
+            class="mb-4 inline-flex size-9 items-center justify-center rounded-md"
+            style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
+          >
+            <Icon name="lucide:globe" class="size-4.5" />
+          </div>
+          <h3 class="mb-1.5 font-semibold tracking-tight">Hostnames that stick</h3>
+          <p class="text-sm text-muted leading-relaxed">Generated, reserved, wildcard, or your own custom domain.</p>
+        </div>
+        <div
+          class="rounded-xl border border-subtle p-5 sm:col-span-2 transition hover:border-[color:var(--color-accent-500)]"
+          style="background-color: var(--bg-elevated);"
+        >
+          <div
+            class="mb-4 inline-flex size-9 items-center justify-center rounded-md"
+            style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
+          >
+            <Icon name="lucide:plug-zap" class="size-4.5" />
+          </div>
+          <h3 class="mb-1.5 font-semibold tracking-tight">HTTP & raw TCP</h3>
+          <p class="text-sm text-muted leading-relaxed">Web services or Postgres, Redis, SSH — one command.</p>
+        </div>
+        <div
+          class="rounded-xl border border-subtle p-5 sm:col-span-2 transition hover:border-[color:var(--color-accent-500)]"
+          style="background-color: var(--bg-elevated);"
+        >
+          <div
+            class="mb-4 inline-flex size-9 items-center justify-center rounded-md"
+            style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
+          >
+            <Icon name="lucide:box" class="size-4.5" />
+          </div>
+          <h3 class="mb-1.5 font-semibold tracking-tight">Install in seconds</h3>
+          <p class="text-sm text-muted leading-relaxed"><code class="code-inline">brew install</code> on macOS, <code class="code-inline">cargo install</code> anywhere Rust runs.</p>
+        </div>
+        <div
+          class="rounded-xl border border-subtle p-5 sm:col-span-6 sm:p-6 transition hover:border-[color:var(--color-accent-500)]"
+          style="background-color: var(--bg-elevated);"
+        >
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
             <div
-              class="rounded-lg border border-subtle p-5 transition hover:border-[color:var(--color-accent-500)]"
-              style="background-color: var(--bg-elevated);"
+              class="inline-flex size-9 items-center justify-center rounded-md"
+              style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
             >
-              <div
-                class="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-md"
-                style="background-color: var(--color-accent-100); color: var(--color-accent-700);"
-              >
-                <Icon name={f.icon} class="h-4.5 w-4.5" />
-              </div>
-              <h3 class="mb-1.5 font-semibold tracking-tight">{f.title}</h3>
-              <p class="text-sm text-muted leading-relaxed">{f.body}</p>
+              <Icon name="lucide:scroll-text" class="size-4.5" />
             </div>
-          ))
-        }
+            <div>
+              <h3 class="font-semibold tracking-tight">MIT licensed, open forever</h3>
+              <p class="mt-1 text-sm text-muted leading-relaxed">Free and open source. Built in Rust. Use it, fork it, ship it — no catches.</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
+  {/* ============================== */}
+  {/* ONE COMMAND split (unchanged)  */}
+  {/* ============================== */}
   <section class="border-t border-subtle">
     <div class="container-page py-16 sm:py-20">
       <div class="grid gap-10 lg:grid-cols-2 lg:gap-16">
@@ -123,7 +195,7 @@ relay http 3000
             Authenticate once, then point relay at any local port. Pick a generated
             hostname, reserve one on the shared domain, or bring your own.
           </p>
-          <ul class="mt-6 space-y-3 text-sm text-muted">
+          <ul class="mt-6 space-y-3 text-sm text-muted" role="list">
             <li class="flex gap-3">
               <Icon name="lucide:check" class="mt-1 h-4 w-4 shrink-0" style="color: var(--color-accent-500);" />
               <span>Generated subdomains on the shared zone for ephemeral sharing.</span>
@@ -155,18 +227,18 @@ relay http 3000
     </div>
   </section>
 
-  <section class="border-t border-subtle">
+  <section class="border-t border-subtle bg-[color:var(--color-accent-50)] dark:bg-[color:var(--bg-elevated)]">
     <div class="container-page py-16 sm:py-20">
-      <div
-        class="rounded-xl border border-subtle p-8 sm:p-10"
-        style="background-color: var(--bg-elevated);"
-      >
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 class="text-xl sm:text-2xl font-semibold tracking-tight">Ready to start tunneling?</h2>
-            <p class="mt-2 text-muted">Install the CLI, sign in from your browser, and expose a port.</p>
-          </div>
-          <div class="flex flex-wrap items-center gap-3">
+      <div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+        <div class="flex flex-col items-start gap-4">
+          <h2 class="max-w-[22ch] text-2xl sm:text-3xl font-semibold tracking-tight text-balance text-[#1c1917] dark:text-[color:var(--fg)]">
+            Ready to start tunneling?
+          </h2>
+          <p class="max-w-[56ch] text-pretty text-[#57534e] dark:text-muted">
+            Install the CLI, sign in from your browser, and expose a port. Zero to URL in
+            under a minute.
+          </p>
+          <div class="mt-2 flex flex-wrap items-center gap-3">
             <a href="/docs" class="btn btn-primary">
               Read the docs
               <Icon name="lucide:arrow-right" class="h-4 w-4" />
@@ -176,6 +248,11 @@ relay http 3000
               GitHub
             </a>
           </div>
+        </div>
+        <div class="space-y-3">
+          <CodeBlock lang="sh" code={`brew tap afomera/relay https://github.com/afomera/relay.git && brew install relay`} />
+          <CodeBlock lang="sh" code={`relay auth login`} />
+          <CodeBlock lang="sh" code={`relay http 3000`} />
         </div>
       </div>
     </div>

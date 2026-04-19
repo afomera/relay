@@ -16,6 +16,12 @@ const toc = [
   { id: "tcp", label: "Raw TCP", depth: 1 },
   { id: "next", label: "What's next" },
 ];
+
+const installMethods = [
+  { id: "homebrew", icon: "lucide:beer", label: "Homebrew", tagline: "macOS · Apple Silicon" },
+  { id: "cargo", icon: "lucide:package", label: "Cargo", tagline: "Any Rust toolchain" },
+  { id: "script", icon: "lucide:terminal", label: "Script", tagline: "One-line curl" },
+];
 ---
 
 <Layout title="Docs — Relay" description="Install relay via Homebrew or Cargo, add your auth token, and start tunneling.">
@@ -34,50 +40,76 @@ const toc = [
         <h2 id="install">Install</h2>
         <p>Choose the path that matches your setup. Homebrew is the quickest on macOS.</p>
 
-        <h3 id="install-homebrew">
-          <span class="inline-flex items-center gap-2">
-            <Icon name="lucide:beer" class="h-5 w-5" style="color: var(--color-accent-500);" />
-            Homebrew (macOS, Apple Silicon)
-          </span>
-        </h3>
-        <p>Tap the repo and install the formula:</p>
-        <CodeBlock
-          lang="sh"
-          code={`brew tap afomera/relay https://github.com/afomera/relay.git
-brew install relay`}
-        />
-        <p>Verify the install:</p>
-        <CodeBlock lang="sh" code={`relay --version`} />
+        <div class="install-tabs my-6" data-install-tabs>
+          <div role="tablist" class="flex flex-wrap gap-1.5 border-b border-subtle pb-3">
+            {installMethods.map((m, i) => (
+              <button
+                type="button"
+                role="tab"
+                id={`tab-${m.id}`}
+                aria-controls={`install-${m.id}`}
+                aria-selected={i === 0 ? "true" : "false"}
+                data-tab-target={m.id}
+                class="install-tab inline-flex items-center gap-2 rounded-md border border-subtle px-3 py-1.5 text-sm transition"
+              >
+                <Icon name={m.icon} class="h-4 w-4" />
+                {m.label}
+              </button>
+            ))}
+          </div>
 
-        <h3 id="install-cargo">
-          <span class="inline-flex items-center gap-2">
-            <Icon name="lucide:package" class="h-5 w-5" style="color: var(--color-accent-500);" />
-            Cargo (any platform)
-          </span>
-        </h3>
-        <p>
-          If you have a Rust toolchain, install directly from the repo. Works on Intel macOS,
-          Linux, and Windows:
-        </p>
-        <CodeBlock
-          lang="sh"
-          code={`cargo install --git https://github.com/afomera/relay relay-cli`}
-        />
-        <p>
-          Make sure <code class="code-inline">~/.cargo/bin</code> is on your <code class="code-inline">PATH</code>.
-        </p>
+          <div
+            id="install-homebrew"
+            role="tabpanel"
+            aria-labelledby="tab-homebrew"
+            data-tab-panel="homebrew"
+            class="install-panel pt-5 scroll-mt-24"
+          >
+            <p class="!mt-0">One-liner — taps the repo and installs the formula:</p>
+            <CodeBlock
+              lang="sh"
+              code={`brew tap afomera/relay https://github.com/afomera/relay.git && brew install relay`}
+            />
+            <p>Verify the install:</p>
+            <CodeBlock lang="sh" code={`relay --version`} />
+          </div>
 
-        <h3 id="install-script">
-          <span class="inline-flex items-center gap-2">
-            <Icon name="lucide:terminal" class="h-5 w-5" style="color: var(--color-accent-500);" />
-            Install script
-          </span>
-        </h3>
-        <p>Prefer a one-liner? The install script grabs the right binary for your OS:</p>
-        <CodeBlock
-          lang="sh"
-          code={`curl -fsSL https://raw.githubusercontent.com/afomera/relay/main/scripts/install.sh | sh`}
-        />
+          <div
+            id="install-cargo"
+            role="tabpanel"
+            aria-labelledby="tab-cargo"
+            data-tab-panel="cargo"
+            class="install-panel pt-5 scroll-mt-24"
+            hidden
+          >
+            <p class="!mt-0">
+              If you have a Rust toolchain, install directly from the repo. Works on Intel
+              macOS, Linux, and Windows:
+            </p>
+            <CodeBlock
+              lang="sh"
+              code={`cargo install --git https://github.com/afomera/relay relay-cli`}
+            />
+            <p>
+              Make sure <code class="code-inline">~/.cargo/bin</code> is on your <code class="code-inline">PATH</code>.
+            </p>
+          </div>
+
+          <div
+            id="install-script"
+            role="tabpanel"
+            aria-labelledby="tab-script"
+            data-tab-panel="script"
+            class="install-panel pt-5 scroll-mt-24"
+            hidden
+          >
+            <p class="!mt-0">Prefer a one-liner? The install script grabs the right binary for your OS:</p>
+            <CodeBlock
+              lang="sh"
+              code={`curl -fsSL https://raw.githubusercontent.com/afomera/relay/main/scripts/install.sh | sh`}
+            />
+          </div>
+        </div>
 
         <h2 id="authenticate">Authenticate</h2>
         <p>
@@ -138,7 +170,7 @@ brew install relay`}
         />
 
         <h2 id="next">What's next</h2>
-        <ul>
+        <ul role="list">
           <li>
             Explore the full CLI with <code class="code-inline">relay --help</code>.
           </li>
@@ -166,25 +198,76 @@ brew install relay`}
       </article>
 
       <aside class="hidden lg:block">
-        <div class="sticky top-24">
+        <div class="sticky top-24" data-toc-active>
           <p class="mb-3 text-xs uppercase tracking-widest text-muted">On this page</p>
           <nav class="flex flex-col gap-1.5 text-sm">
-            {
-              toc.map((item) => (
-                <a
-                  href={`#${item.id}`}
-                  class:list={[
-                    "text-muted transition hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]",
-                    item.depth === 1 ? "pl-3" : "",
-                  ]}
-                >
-                  {item.label}
-                </a>
-              ))
-            }
+            {toc.map((item) => (
+              <a
+                href={`#${item.id}`}
+                class:list={[
+                  "toc-link border-l-2 border-transparent py-1 pl-3 text-muted transition hover:text-[color:var(--color-accent-600)] dark:hover:text-[color:var(--color-accent-400)]",
+                  item.depth === 1 ? "pl-6" : "",
+                ]}
+              >
+                {item.label}
+              </a>
+            ))}
           </nav>
         </div>
       </aside>
     </div>
   </section>
+
+  <script is:inline>
+    // Install tabs
+    document.querySelectorAll("[data-install-tabs]").forEach((root) => {
+      const tabs = root.querySelectorAll('[role="tab"]');
+      const panels = root.querySelectorAll('[role="tabpanel"]');
+      const activate = (id) => {
+        tabs.forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tabTarget === id)));
+        panels.forEach((p) => p.toggleAttribute("hidden", p.dataset.tabPanel !== id));
+      };
+      tabs.forEach((tab) => {
+        tab.addEventListener("click", () => activate(tab.dataset.tabTarget));
+      });
+      // Deep-link: #install-cargo etc. activates the matching tab.
+      const syncFromHash = () => {
+        const m = location.hash.match(/^#install-(homebrew|cargo|script)$/);
+        if (m) activate(m[1]);
+      };
+      window.addEventListener("hashchange", syncFromHash);
+      syncFromHash();
+    });
+
+    // Active-section highlighting for TOC
+    const initToc = () => {
+      const tocs = document.querySelectorAll("[data-toc-active]");
+      if (!tocs.length) return;
+      const headings = Array.from(document.querySelectorAll("article h2[id], article h3[id]"));
+      if (!headings.length) return;
+
+      const setActive = (id) => {
+        tocs.forEach((root) => {
+          root.querySelectorAll(".toc-link").forEach((a) => {
+            const match = a.getAttribute("href") === "#" + id;
+            a.toggleAttribute("aria-current", match);
+            a.classList.toggle("toc-link--active", match);
+          });
+        });
+      };
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((e) => e.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+          if (visible[0]) setActive(visible[0].target.id);
+        },
+        { rootMargin: "-15% 0px -70% 0px", threshold: 0 }
+      );
+      headings.forEach((h) => observer.observe(h));
+    };
+
+    initToc();
+  </script>
 </Layout>
