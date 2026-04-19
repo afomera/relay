@@ -58,41 +58,72 @@ impl RenewalWorker {
     async fn tick_base(&self, horizon: i64) -> anyhow::Result<()> {
         let wildcard_name = format!("*.{}", self.opts.base_domain);
         let apex_name = self.opts.base_domain.clone();
+        // The issued cert carries `*.<temporary_label>.<base>` as a SAN so
+        // tunnel URLs like `x.temporary.<base>` validate. rustls's resolver
+        // only walks one wildcard level, so we persist a separate row
+        // keyed on that name pointing at the same cert material.
+        let temporary_name = self
+            .opts
+            .temporary_label
+            .as_ref()
+            .map(|label| format!("*.{label}.{}", self.opts.base_domain));
 
         // The wildcard row is the source of truth for renewal timing; the
-        // apex row is stored alongside it so SNI for the bare apex finds the
-        // same cert material.
+        // apex and temporary-wildcard rows are stored alongside it so SNI
+        // for the bare apex and `*.<temporary>.<base>` find the same cert
+        // material.
         let existing = dao::latest_cert_for(&self.db, &wildcard_name).await?;
         let apex_existing = dao::latest_cert_for(&self.db, &apex_name).await?;
+        let temporary_existing = match &temporary_name {
+            Some(name) => dao::latest_cert_for(&self.db, name).await?,
+            None => None,
+        };
         let needs_issuance = match &existing {
             None => true,
             Some(c) => c.not_after < horizon,
         };
         let apex_missing = apex_existing.is_none();
-        if !needs_issuance && !apex_missing {
+        let temporary_missing = temporary_name.is_some() && temporary_existing.is_none();
+        if !needs_issuance && !apex_missing && !temporary_missing {
             return Ok(());
         }
 
-        // If the wildcard is still fresh but the apex row is missing (e.g.
-        // upgraded from a pre-apex build), backfill the apex row from the
-        // existing cert material rather than re-hitting ACME.
+        // If the wildcard is still fresh but the apex or temporary-wildcard
+        // rows are missing (e.g. upgraded from a pre-apex or pre-temporary
+        // build), backfill them from the existing cert material rather
+        // than re-hitting ACME.
         if !needs_issuance {
             if let Some(c) = existing {
-                tracing::info!(hostname = %apex_name, "backfilling apex cert row from existing wildcard cert");
-                dao::upsert_cert(
-                    &self.db,
-                    &apex_name,
-                    &c.cert_chain_pem,
-                    &c.key_pem_encrypted,
-                    c.not_after,
-                )
-                .await?;
+                if apex_missing {
+                    tracing::info!(hostname = %apex_name, "backfilling apex cert row from existing wildcard cert");
+                    dao::upsert_cert(
+                        &self.db,
+                        &apex_name,
+                        &c.cert_chain_pem,
+                        &c.key_pem_encrypted,
+                        c.not_after,
+                    )
+                    .await?;
+                }
+                if temporary_missing {
+                    if let Some(name) = &temporary_name {
+                        tracing::info!(hostname = %name, "backfilling temporary wildcard cert row from existing wildcard cert");
+                        dao::upsert_cert(
+                            &self.db,
+                            name,
+                            &c.cert_chain_pem,
+                            &c.key_pem_encrypted,
+                            c.not_after,
+                        )
+                        .await?;
+                    }
+                }
                 self.store.refresh().await?;
             }
             return Ok(());
         }
 
-        tracing::info!(hostname = %wildcard_name, apex = %apex_name, "issuing/renewing wildcard + apex cert via ACME DNS-01");
+        tracing::info!(hostname = %wildcard_name, apex = %apex_name, temporary = ?temporary_name, "issuing/renewing wildcard + apex cert via ACME DNS-01");
         let issued = issue_wildcard(&*self.dns, &self.opts, &self.data_key_b64).await?;
         dao::upsert_cert(
             &self.db,
@@ -110,8 +141,18 @@ impl RenewalWorker {
             issued.not_after,
         )
         .await?;
+        if let Some(name) = &temporary_name {
+            dao::upsert_cert(
+                &self.db,
+                name,
+                &issued.cert_chain_pem,
+                &issued.key_pem_encrypted,
+                issued.not_after,
+            )
+            .await?;
+        }
         self.store.refresh().await?;
-        tracing::info!(hostname = %wildcard_name, apex = %apex_name, "wildcard + apex cert installed");
+        tracing::info!(hostname = %wildcard_name, apex = %apex_name, temporary = ?temporary_name, "wildcard + apex cert installed");
         Ok(())
     }
 
