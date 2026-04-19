@@ -22,6 +22,13 @@ pub struct ControlConfig {
     /// Dev mode — exposes a one-click `/auth/dev/login` so you can use the
     /// dashboard locally without a GitHub OAuth app. Never enable in prod.
     pub dev_mode: bool,
+
+    /// Zone that Relay operates for ACME DNS-01 delegation. When set, users
+    /// adding a wildcard custom domain are instructed to CNAME
+    /// `_acme-challenge.<their-domain>` to `<slug>.<delegation_zone>`, and the
+    /// DNS provider is expected to have write scope on this zone. When
+    /// `None`, wildcard custom domains are disabled (the UI hides the toggle).
+    pub acme_delegation_zone: Option<String>,
 }
 
 #[derive(Clone, Debug)]

@@ -138,9 +138,16 @@ pub async fn run_basic_crud_suite(db: &Db) {
     assert_eq!(purged, 1);
 
     // ---- custom domains ----
-    let cd = relay_db::create_custom_domain(db, org.id, "hooks.example.com", "verify-token-1")
-        .await
-        .unwrap();
+    let cd = relay_db::create_custom_domain(
+        db,
+        org.id,
+        "hooks.example.com",
+        "verify-token-1",
+        false,
+        None,
+    )
+    .await
+    .unwrap();
     let scoped = relay_db::find_custom_domain_for_org(db, cd.id, org.id).await.unwrap();
     assert!(scoped.is_some());
     relay_db::delete_custom_domain_by_id(db, cd.id).await.unwrap();

@@ -348,8 +348,17 @@ pub async fn create_custom_domain(
     org_id: Uuid,
     hostname: &str,
     verification_token: &str,
+    wildcard: bool,
+    acme_delegation_slug: Option<&str>,
 ) -> Result<CustomDomain, DbError> {
-    dispatch!(db, create_custom_domain(org_id, hostname, verification_token))
+    dispatch!(
+        db,
+        create_custom_domain(org_id, hostname, verification_token, wildcard, acme_delegation_slug)
+    )
+}
+
+pub async fn list_verified_wildcard_domains(db: &Db) -> Result<Vec<CustomDomain>, DbError> {
+    dispatch!(db, list_verified_wildcard_domains())
 }
 
 pub async fn list_custom_domains(db: &Db, org_id: Uuid) -> Result<Vec<CustomDomain>, DbError> {

@@ -12,7 +12,7 @@ use relay_db as dao;
 use relay_db::Db;
 use relay_dns::DnsProvider;
 
-use crate::issue::{IssueOptions, issue_wildcard};
+use crate::issue::{IssueOptions, issue_dns01_custom, issue_wildcard};
 use crate::store::CertStore;
 
 pub struct RenewalWorker {
@@ -21,6 +21,10 @@ pub struct RenewalWorker {
     pub opts: IssueOptions,
     pub data_key_b64: String,
     pub store: Arc<dyn CertStore>,
+    /// Zone Relay uses for ACME DNS-01 delegation on custom wildcard
+    /// domains. When `None`, verified wildcard custom domains are skipped
+    /// at renewal time (logged at warn once per tick).
+    pub delegation_zone: Option<String>,
 }
 
 impl RenewalWorker {
@@ -45,9 +49,15 @@ impl RenewalWorker {
     }
 
     async fn tick(&self) -> anyhow::Result<()> {
+        let horizon = (time::OffsetDateTime::now_utc() + time::Duration::days(30)).unix_timestamp();
+        self.tick_base(horizon).await?;
+        self.tick_custom_wildcards(horizon).await?;
+        Ok(())
+    }
+
+    async fn tick_base(&self, horizon: i64) -> anyhow::Result<()> {
         let wildcard_name = format!("*.{}", self.opts.base_domain);
         let apex_name = self.opts.base_domain.clone();
-        let horizon = (time::OffsetDateTime::now_utc() + time::Duration::days(30)).unix_timestamp();
 
         // The wildcard row is the source of truth for renewal timing; the
         // apex row is stored alongside it so SNI for the bare apex finds the
@@ -102,6 +112,116 @@ impl RenewalWorker {
         .await?;
         self.store.refresh().await?;
         tracing::info!(hostname = %wildcard_name, apex = %apex_name, "wildcard + apex cert installed");
+        Ok(())
+    }
+
+    async fn tick_custom_wildcards(&self, horizon: i64) -> anyhow::Result<()> {
+        let domains = dao::list_verified_wildcard_domains(&self.db).await?;
+        if domains.is_empty() {
+            return Ok(());
+        }
+        let Some(zone) = self.delegation_zone.clone() else {
+            tracing::warn!(
+                "custom wildcard domains present but [acme].delegation_zone unset — skipping"
+            );
+            return Ok(());
+        };
+
+        for cd in domains {
+            let Some(slug) = cd.acme_delegation_slug.as_deref() else {
+                tracing::warn!(hostname = %cd.hostname, "wildcard row missing delegation slug; skipping");
+                continue;
+            };
+            let wildcard_name = format!("*.{}", cd.hostname);
+            let existing = match dao::latest_cert_for(&self.db, &wildcard_name).await {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(?e, hostname = %cd.hostname, "cert lookup failed");
+                    continue;
+                }
+            };
+            let apex_existing = match dao::latest_cert_for(&self.db, &cd.hostname).await {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(?e, hostname = %cd.hostname, "apex cert lookup failed");
+                    continue;
+                }
+            };
+            let needs_issuance = match &existing {
+                None => true,
+                Some(c) => c.not_after < horizon,
+            };
+            if !needs_issuance && apex_existing.is_some() {
+                continue;
+            }
+
+            // Backfill apex row from wildcard material if only the apex is
+            // missing (e.g. upgraded from an earlier build that persisted only
+            // the wildcard row).
+            if !needs_issuance {
+                if let Some(c) = existing {
+                    tracing::info!(hostname = %cd.hostname, "backfilling apex cert row from wildcard");
+                    if let Err(e) = dao::upsert_cert(
+                        &self.db,
+                        &cd.hostname,
+                        &c.cert_chain_pem,
+                        &c.key_pem_encrypted,
+                        c.not_after,
+                    )
+                    .await
+                    {
+                        tracing::warn!(?e, hostname = %cd.hostname, "apex backfill failed");
+                    }
+                }
+                continue;
+            }
+
+            tracing::info!(hostname = %cd.hostname, slug, "renewing custom wildcard cert via DNS-01");
+            let opts = IssueOptions {
+                acme_directory: self.opts.acme_directory.clone(),
+                contact_email: self.opts.contact_email.clone(),
+                base_domain: cd.hostname.clone(),
+                temporary_label: None,
+            };
+            match issue_dns01_custom(
+                &*self.dns,
+                &cd.hostname,
+                &zone,
+                slug,
+                &opts,
+                &self.data_key_b64,
+            )
+            .await
+            {
+                Ok(issued) => {
+                    let r1 = dao::upsert_cert(
+                        &self.db,
+                        &wildcard_name,
+                        &issued.cert_chain_pem,
+                        &issued.key_pem_encrypted,
+                        issued.not_after,
+                    )
+                    .await;
+                    let r2 = dao::upsert_cert(
+                        &self.db,
+                        &cd.hostname,
+                        &issued.cert_chain_pem,
+                        &issued.key_pem_encrypted,
+                        issued.not_after,
+                    )
+                    .await;
+                    if let Err(e) = r1.or(r2) {
+                        tracing::warn!(?e, hostname = %cd.hostname, "custom wildcard persist failed");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(?e, hostname = %cd.hostname, "custom wildcard issuance failed");
+                }
+            }
+        }
+        // One refresh at the end of the loop — individual failures don't
+        // block others from being installed.
+        let _ = self.store.refresh().await;
         Ok(())
     }
 }

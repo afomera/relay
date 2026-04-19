@@ -74,6 +74,13 @@ pub struct CustomDomain {
     pub verified_at: Option<i64>,
     pub cert_id: Option<Uuid>,
     pub created_at: i64,
+    /// When true the cert covers `<hostname>` + `*.<hostname>` (issued via
+    /// ACME DNS-01 + CNAME delegation). False keeps the original apex-only
+    /// HTTP-01 flow.
+    pub wildcard: bool,
+    /// Stable per-domain slug used for the ACME DNS-01 delegation target:
+    /// `<slug>.<acme.delegation_zone>`. `Some` iff `wildcard = true`.
+    pub acme_delegation_slug: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow)]

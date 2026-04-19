@@ -16,8 +16,17 @@
 <div class="card">
   <form method="post" action="/domains" class="inline">
     <input type="text" name="hostname" placeholder="tunnel.mycompany.com" required>
+    {% if delegation_zone.is_some() %}
+    <label class="muted small" style="display:inline-flex;align-items:center;gap:.4em">
+      <input type="checkbox" name="wildcard" value="1">
+      wildcard (issue cert for <code>*.domain</code> too)
+    </label>
+    {% endif %}
     <button type="submit">{{ crate::icons::icon("plus")|safe }} add domain</button>
   </form>
+  {% if delegation_zone.is_none() %}
+  <p class="muted small">Wildcard domains are disabled — <code>[acme].delegation_zone</code> is not configured on this deploy.</p>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -29,14 +38,27 @@
     <tbody>
       {% for d in domains %}
       <tr>
-        <td class="mono">{{ d.hostname }}</td>
+        <td class="mono">
+          {{ d.hostname }}
+          {% if d.wildcard %}<span class="pill small" style="margin-left:.4em">wildcard</span>{% endif %}
+        </td>
         <td>
           {% if d.verified_at.is_some() %}<span class="pill active"><span class="dot"></span>verified</span>
           {% else %}<span class="pill warning">pending</span>{% endif %}
         </td>
         <td class="mono small secondary">
           <div>CNAME {{ d.hostname }} → {{ apex_target }}</div>
+          {% if d.wildcard %}
+          <div>CNAME *.{{ d.hostname }} → {{ apex_target }}</div>
+          {% endif %}
           <div>TXT _relay-challenge.{{ d.hostname }} "{{ d.verification_token }}"</div>
+          {% if d.wildcard %}
+            {% if let Some(slug) = d.acme_delegation_slug.as_ref() %}
+              {% if let Some(zone) = delegation_zone.as_ref() %}
+          <div>CNAME _acme-challenge.{{ d.hostname }} → {{ slug }}.{{ zone }}</div>
+              {% endif %}
+            {% endif %}
+          {% endif %}
         </td>
         <td class="actions">
           <div class="row">

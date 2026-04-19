@@ -39,6 +39,7 @@ relay-db = { path = "../relay-db" }
 relay-edge = { path = "../relay-edge" }
 relay-proto = { path = "../relay-proto" }
 relay-acme = { path = "../relay-acme" }
+relay-dns = { path = "../relay-dns" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros"] }

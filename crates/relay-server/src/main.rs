@@ -81,6 +81,13 @@ struct AcmeSection {
     #[serde(default = "default_acme_directory")]
     directory: String,
     contact_email: String,
+    /// Zone Relay controls for ACME DNS-01 delegation, e.g.
+    /// `acme-delegate.withrelay.dev`. The configured [dns] provider must
+    /// have write scope on this zone. When unset, users can still add
+    /// apex-only (HTTP-01) custom domains, but wildcard custom domains are
+    /// disabled in the dashboard.
+    #[serde(default)]
+    delegation_zone: Option<String>,
 }
 fn default_acme_directory() -> String {
     "https://acme-staging-v02.api.letsencrypt.org/directory".into()
@@ -216,6 +223,7 @@ async fn run_dev(args: Args) -> anyhow::Result<()> {
         github: None,
         data_key_b64,
         dev_mode: true,
+        acme_delegation_zone: None,
     };
     let events = EventBus::new();
     let http01 = Arc::new(Http01Pending::new());
@@ -341,6 +349,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         github,
         data_key_b64: data_key.clone(),
         dev_mode: false,
+        acme_delegation_zone: cfg.acme.as_ref().and_then(|a| a.delegation_zone.clone()),
     };
 
     // Shared ACME HTTP-01 pending store — edge serves challenges from here,
@@ -374,9 +383,15 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
     let tls_resolver: Option<Arc<dyn rustls::server::ResolvesServerCert>> =
         Some(Arc::new(CertResolver { store: cert_store.clone(), fallback }));
 
-    // Build the cert issuer for custom domains (HTTP-01). Needs the ACME
+    // Build the DNS provider once and share it between the cert issuer (for
+    // wildcard custom-domain DNS-01) and the renewal worker (for the base
+    // apex wildcard + any wildcard custom domains).
+    let dns_provider = build_dns_provider(cfg.dns.as_ref())?;
+
+    // Build the cert issuer for custom domains. Needs the ACME
     // directory + contact from `[acme]`; absent that, dashboard verify marks
-    // domains verified but doesn't issue certs.
+    // domains verified but doesn't issue certs. The optional DNS provider +
+    // delegation_zone gate wildcard custom-domain issuance.
     let cert_issuer = cfg.acme.as_ref().map(|acme_cfg| {
         Arc::new(CertIssuerCtx {
             db: db.clone(),
@@ -385,6 +400,8 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
             acme_directory: acme_cfg.directory.clone(),
             contact_email: acme_cfg.contact_email.clone(),
             data_key_b64: data_key.clone(),
+            dns: dns_provider.clone(),
+            delegation_zone: acme_cfg.delegation_zone.clone(),
         })
     });
 
@@ -406,14 +423,14 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         let host = host.clone();
         let issuer = issuer.clone();
         tokio::spawn(async move {
-            if let Err(e) = issuer.ensure_cert(&host).await {
+            if let Err(e) = issuer.ensure_cert(&host, None).await {
                 tracing::warn!(%host, ?e, "admin hostname cert issuance failed");
             }
         });
     }
 
     if let Some(acme_cfg) = cfg.acme.as_ref() {
-        if let Some(dns) = build_dns_provider(cfg.dns.as_ref())? {
+        if let Some(dns) = dns_provider.clone() {
             let opts = IssueOptions {
                 acme_directory: acme_cfg.directory.clone(),
                 contact_email: acme_cfg.contact_email.clone(),
@@ -428,6 +445,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
                 opts,
                 data_key_b64: data_key.clone(),
                 store: cert_store.clone(),
+                delegation_zone: acme_cfg.delegation_zone.clone(),
             };
             tokio::spawn(async move {
                 if let Err(e) = worker.run().await {

@@ -280,8 +280,19 @@ pub mod http {
         if ctx.token.is_empty() {
             anyhow::bail!("not signed in — run `relay auth login` (or pass --token)");
         }
-        // --domain shadows --hostname when both set.
-        let mut desired = domain.or(hostname);
+        // Combine the two flags so `--hostname andrea --domain mycompany.com`
+        // registers as `andrea.mycompany.com`. Historically `--domain`
+        // silently shadowed `--hostname`; the new behavior matches the way
+        // `sharedwithrelay.com` (and most tunnel services) treat a base
+        // domain + sub-label. The server still validates that the resulting
+        // FQDN is authorized for the org (apex, wildcard subdomain, or
+        // reservation) and rejects unknown combinations.
+        let mut desired = match (hostname, domain) {
+            (Some(h), Some(d)) => Some(format!("{h}.{d}")),
+            (None, Some(d)) => Some(d),
+            (Some(h), None) => Some(h),
+            (None, None) => None,
+        };
         let mut backoff = Duration::from_millis(500);
 
         // One printer task for the whole CLI lifetime — reconnects reuse it so

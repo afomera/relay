@@ -79,6 +79,10 @@ pub struct DomainsPage {
     pub nav: &'static str,
     pub domains: Vec<CustomDomain>,
     pub apex_target: String,
+    /// Zone this deploy operates for ACME DNS-01 delegation (e.g.
+    /// `acme-delegate.withrelay.dev`). When `Some`, the wildcard toggle
+    /// and the per-domain `_acme-challenge` CNAME hint are rendered.
+    pub delegation_zone: Option<String>,
     /// Set when a /domains/:id/verify attempt failed — rendered as a banner.
     pub verify_error: Option<(String, String)>,
 }

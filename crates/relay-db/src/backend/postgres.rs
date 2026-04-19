@@ -452,14 +452,18 @@ pub(crate) async fn create_custom_domain(
     org_id: Uuid,
     hostname: &str,
     verification_token: &str,
+    wildcard: bool,
+    acme_delegation_slug: Option<&str>,
 ) -> Result<CustomDomain, DbError> {
     let id = Uuid::new_v4();
     let now = now_unix();
-    sqlx::query("INSERT INTO custom_domains (id, org_id, hostname, verification_token, created_at) VALUES ($1, $2, $3, $4, $5)")
+    sqlx::query("INSERT INTO custom_domains (id, org_id, hostname, verification_token, wildcard, acme_delegation_slug, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
         .bind(id)
         .bind(org_id)
         .bind(hostname)
         .bind(verification_token)
+        .bind(wildcard)
+        .bind(acme_delegation_slug)
         .bind(now)
         .execute(pool(db))
         .await
@@ -472,6 +476,8 @@ pub(crate) async fn create_custom_domain(
         verified_at: None,
         cert_id: None,
         created_at: now,
+        wildcard,
+        acme_delegation_slug: acme_delegation_slug.map(str::to_string),
     })
 }
 
@@ -526,6 +532,15 @@ pub(crate) async fn find_custom_domain(
 pub(crate) async fn delete_custom_domain_by_id(db: &Db, id: Uuid) -> Result<(), DbError> {
     sqlx::query("DELETE FROM custom_domains WHERE id = $1").bind(id).execute(pool(db)).await?;
     Ok(())
+}
+
+pub(crate) async fn list_verified_wildcard_domains(db: &Db) -> Result<Vec<CustomDomain>, DbError> {
+    let rows = sqlx::query_as::<_, CustomDomain>(
+        "SELECT * FROM custom_domains WHERE wildcard = TRUE AND verified_at IS NOT NULL",
+    )
+    .fetch_all(pool(db))
+    .await?;
+    Ok(rows)
 }
 
 // ---------------------------------------------------------------------------

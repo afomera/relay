@@ -172,11 +172,32 @@ impl ReservationStore for DbReservationStore {
             };
         }
 
-        // Path 2: custom domain — exact match in custom_domains.
+        // Path 2: custom domain — exact match in custom_domains. Any
+        // verified row belonging to this principal approves the hostname.
         match dao::find_custom_domain(&self.db, hostname).await {
-            Ok(Some(cd)) if cd.org_id == principal.org_id && cd.verified_at.is_some() => Ok(()),
-            Ok(Some(_)) | Ok(None) => Err(ReservationError::NotAllowed(hostname.to_string())),
-            Err(e) => Err(ReservationError::Other(e.to_string())),
+            Ok(Some(cd)) if cd.org_id == principal.org_id && cd.verified_at.is_some() => {
+                return Ok(());
+            }
+            Ok(_) => {}
+            Err(e) => return Err(ReservationError::Other(e.to_string())),
         }
+
+        // Path 3: one-level subdomain of a verified wildcard custom domain.
+        // Matches the rustls cert resolver which only tries a single
+        // `*.<parent>` wildcard; anything deeper (`a.b.domain.com`) is not
+        // covered by the cert we issue, so we refuse it here too.
+        if let Some((_, parent)) = hostname.split_once('.') {
+            match dao::find_custom_domain(&self.db, parent).await {
+                Ok(Some(cd))
+                    if cd.org_id == principal.org_id && cd.verified_at.is_some() && cd.wildcard =>
+                {
+                    return Ok(());
+                }
+                Ok(_) => {}
+                Err(e) => return Err(ReservationError::Other(e.to_string())),
+            }
+        }
+
+        Err(ReservationError::NotAllowed(hostname.to_string()))
     }
 }

@@ -212,6 +212,155 @@ pub async fn issue_wildcard(
     Ok(IssuedCert { cert_chain_pem: chain_pem, key_pem_encrypted, not_after })
 }
 
+/// Issue a SAN certificate for a user-owned custom domain plus its
+/// wildcard (`<domain>` + `*.<domain>`) via ACME DNS-01 with CNAME
+/// delegation.
+///
+/// The user is expected to have a one-time CNAME:
+///   `_acme-challenge.<domain>  CNAME  <slug>.<delegation_zone>`
+///
+/// so that when the ACME CA resolves `_acme-challenge.<domain>` (and
+/// `_acme-challenge.<domain>` again for the wildcard authorization — RFC
+/// 8555 §7.1.3 strips the `*.`), it follows the CNAME into a zone *we*
+/// control and reads a TXT we wrote via `DnsProvider`. That means cert
+/// renewals need no further user action after the initial CNAME.
+///
+/// Both authorizations (apex + wildcard) challenge the same record
+/// name, so ACME returns two `key_authorization().dns_value()` strings
+/// for the same name and we must publish *both* (TXT is a multi-valued
+/// RRset — LE accepts a match on any of the values).
+pub async fn issue_dns01_custom(
+    dns: &dyn DnsProvider,
+    domain: &str,
+    delegation_zone: &str,
+    delegation_slug: &str,
+    opts: &IssueOptions,
+    data_key_b64: &str,
+) -> anyhow::Result<IssuedCert> {
+    let data_key = decode_data_key(data_key_b64)?;
+
+    tracing::info!(
+        directory = %opts.acme_directory,
+        %domain,
+        delegation_target = %format!("{delegation_slug}.{delegation_zone}"),
+        "creating ACME account for custom wildcard domain"
+    );
+    let contact = format!("mailto:{}", opts.contact_email);
+    let (account, _creds) = Account::builder()?
+        .create(
+            &NewAccount {
+                contact: &[&contact],
+                terms_of_service_agreed: true,
+                only_return_existing: false,
+            },
+            opts.acme_directory.clone(),
+            None,
+        )
+        .await?;
+
+    // Apex + wildcard SANs so `<domain>` and `any.<domain>` both work on
+    // the same cert. Order mirrors `issue_wildcard` — CSR SANs must match
+    // the order identifiers byte-for-byte.
+    let idents = vec![Identifier::Dns(format!("*.{domain}")), Identifier::Dns(domain.to_string())];
+    let mut order = account.new_order(&NewOrder::new(&idents)).await?;
+
+    // The delegation target. Both authorizations will publish here via
+    // the user's CNAME, so we write into one name only — but with two
+    // distinct TXT values (one per authorization).
+    let delegation_record = format!("{delegation_slug}.{delegation_zone}");
+    let mut published: Vec<(String, String)> = Vec::new();
+    {
+        let mut authzs = order.authorizations();
+        while let Some(result) = authzs.next().await {
+            let mut authz = result?;
+            if !matches!(authz.status, AuthorizationStatus::Pending) {
+                continue;
+            }
+            let Some(challenge) = authz.challenge(ChallengeType::Dns01) else {
+                anyhow::bail!("ACME did not offer a dns-01 challenge");
+            };
+            let dns_value = challenge.key_authorization().dns_value();
+            tracing::info!(record = %delegation_record, "publishing ACME challenge (delegated)");
+            dns.upsert_txt(&delegation_record, &dns_value).await?;
+            published.push((delegation_record.clone(), dns_value));
+        }
+    }
+
+    let result: anyhow::Result<(String, rcgen::KeyPair)> = async {
+        // Match the wildcard path — give DNS propagation a comfortable
+        // window before asking LE to validate.
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        {
+            let mut authzs = order.authorizations();
+            while let Some(authz_result) = authzs.next().await {
+                let mut authz = authz_result?;
+                if !matches!(authz.status, AuthorizationStatus::Pending) {
+                    continue;
+                }
+                let Some(mut challenge) = authz.challenge(ChallengeType::Dns01) else {
+                    anyhow::bail!("ACME did not offer a dns-01 challenge");
+                };
+                challenge.set_ready().await?;
+            }
+        }
+
+        let status = order.poll_ready(&RetryPolicy::default()).await?;
+        if !matches!(status, OrderStatus::Ready) {
+            let mut authzs = order.authorizations();
+            while let Some(authz_result) = authzs.next().await {
+                match authz_result {
+                    Ok(authz) => {
+                        let ident = authz.identifier();
+                        let chal = authz
+                            .challenges
+                            .iter()
+                            .find(|c| matches!(c.r#type, ChallengeType::Dns01));
+                        tracing::warn!(
+                            identifier = ?ident,
+                            status = ?authz.status,
+                            challenge_status = ?chal.map(|c| c.status),
+                            error = ?chal.and_then(|c| c.error.as_ref()),
+                            "ACME authz diagnostic (custom wildcard)"
+                        );
+                    }
+                    Err(e) => tracing::warn!(?e, "failed to fetch authz on invalid order"),
+                }
+            }
+            anyhow::bail!("ACME order did not reach Ready state: {status:?}");
+        }
+
+        let kp = rcgen::KeyPair::generate()?;
+        let sans: Vec<String> = idents
+            .iter()
+            .map(|i| {
+                let Identifier::Dns(n) = i else { unreachable!() };
+                n.clone()
+            })
+            .collect();
+        let mut params = rcgen::CertificateParams::new(sans.clone())?;
+        params.distinguished_name = rcgen::DistinguishedName::new();
+        params.distinguished_name.push(rcgen::DnType::CommonName, sans[0].clone());
+        let csr = params.serialize_request(&kp)?;
+        order.finalize_csr(csr.der()).await?;
+
+        let chain_pem = order.poll_certificate(&RetryPolicy::default()).await?;
+        Ok((chain_pem, kp))
+    }
+    .await;
+
+    for (name, value) in &published {
+        if let Err(e) = dns.delete_txt(name, value).await {
+            tracing::warn!(?e, %name, "failed to delete ACME TXT record");
+        }
+    }
+
+    let (chain_pem, kp) = result?;
+
+    let not_after = (time::OffsetDateTime::now_utc() + time::Duration::days(60)).unix_timestamp();
+    let key_pem_encrypted = encrypt_key(&data_key, kp.serialize_pem().as_bytes());
+    Ok(IssuedCert { cert_chain_pem: chain_pem, key_pem_encrypted, not_after })
+}
+
 /// Issue a certificate for a single hostname via ACME HTTP-01. The caller
 /// must have the edge serving `/.well-known/acme-challenge/*` from
 /// `pending` on port 80 so the ACME server can validate the token.

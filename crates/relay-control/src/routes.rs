@@ -634,6 +634,7 @@ async fn domains_page(
         nav: "domains",
         domains,
         apex_target: state.config.base_domain.clone(),
+        delegation_zone: state.config.acme_delegation_zone.clone(),
         verify_error,
     }
     .into_response()
@@ -642,6 +643,9 @@ async fn domains_page(
 #[derive(Deserialize)]
 struct DomainForm {
     hostname: String,
+    /// Checkbox from the create form. Missing = unchecked = false.
+    #[serde(default)]
+    wildcard: Option<String>,
 }
 
 async fn create_domain(
@@ -657,9 +661,31 @@ async fn create_domain(
     if !valid_domain(&hostname) {
         return (StatusCode::BAD_REQUEST, "invalid hostname").into_response();
     }
+    // An HTML checkbox POSTs nothing when unchecked and the literal value
+    // ("on") when checked. Treat anything present as true.
+    let wildcard = form.wildcard.is_some();
+    if wildcard && state.config.acme_delegation_zone.is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "wildcard domains require [acme].delegation_zone to be configured",
+        )
+            .into_response();
+    }
     let token = Uuid::new_v4().to_string();
-    let _ = dao::create_custom_domain(&state.db, org.id, &hostname, &token).await;
+    let slug = if wildcard { Some(generate_delegation_slug()) } else { None };
+    let _ =
+        dao::create_custom_domain(&state.db, org.id, &hostname, &token, wildcard, slug.as_deref())
+            .await;
     Redirect::to("/domains").into_response()
+}
+
+/// 16 hex chars is plenty of entropy for a per-domain label and short
+/// enough that users won't squint when pasting the CNAME target.
+fn generate_delegation_slug() -> String {
+    use rand::RngCore;
+    let mut b = [0u8; 8];
+    rand::thread_rng().fill_bytes(&mut b);
+    b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
 async fn verify_domain(
@@ -675,38 +701,62 @@ async fn verify_domain(
     else {
         return (StatusCode::NOT_FOUND, "domain not found").into_response();
     };
-    match crate::verify::verify_txt(&domain.hostname, &domain.verification_token).await {
-        Ok(()) => {
-            let _ = dao::mark_custom_domain_verified(&state.db, id).await;
-            tracing::info!(?id, hostname = %domain.hostname, "custom domain verified via TXT");
-            // Kick off HTTP-01 cert issuance in the background. By the time the
-            // user loads https://<hostname>, the cert is usually already in the
-            // resolver's cache.
-            if let Some(issuer) = state.cert_issuer.clone() {
-                let hostname = domain.hostname.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = issuer.ensure_cert(&hostname).await {
-                        tracing::warn!(%hostname, ?e, "custom-domain cert issuance failed");
-                    }
-                });
-            } else {
-                tracing::warn!(
-                    hostname = %domain.hostname,
-                    "verified but no cert issuer configured — no HTTPS cert will be issued"
-                );
-            }
-            Redirect::to("/domains").into_response()
-        }
-        Err(e) => {
-            tracing::info!(hostname = %domain.hostname, error = %e, "custom domain verification failed");
-            Redirect::to(&format!(
+
+    // Step 1: ownership TXT. Required for both apex-only and wildcard.
+    if let Err(e) = crate::verify::verify_txt(&domain.hostname, &domain.verification_token).await {
+        tracing::info!(hostname = %domain.hostname, error = %e, "custom domain TXT verification failed");
+        return Redirect::to(&format!(
+            "/domains?verify_err={}&host={}",
+            urlencoding::encode(&e.to_string()),
+            urlencoding::encode(&domain.hostname)
+        ))
+        .into_response();
+    }
+
+    // Step 2 (wildcard only): the user must also CNAME _acme-challenge to
+    // our delegation target so renewals work unattended.
+    if domain.wildcard {
+        let (Some(zone), Some(slug)) =
+            (state.config.acme_delegation_zone.as_ref(), domain.acme_delegation_slug.as_ref())
+        else {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "wildcard domain is missing delegation metadata — re-create it",
+            )
+                .into_response();
+        };
+        let target = format!("{slug}.{zone}");
+        if let Err(e) = crate::verify::verify_acme_delegation_cname(&domain.hostname, &target).await
+        {
+            tracing::info!(hostname = %domain.hostname, error = %e, "custom domain CNAME verification failed");
+            return Redirect::to(&format!(
                 "/domains?verify_err={}&host={}",
                 urlencoding::encode(&e.to_string()),
                 urlencoding::encode(&domain.hostname)
             ))
-            .into_response()
+            .into_response();
         }
     }
+
+    let _ = dao::mark_custom_domain_verified(&state.db, id).await;
+    tracing::info!(?id, hostname = %domain.hostname, wildcard = domain.wildcard, "custom domain verified");
+
+    if let Some(issuer) = state.cert_issuer.clone() {
+        let hostname = domain.hostname.clone();
+        let slug = domain.acme_delegation_slug.clone();
+        tokio::spawn(async move {
+            let res = issuer.ensure_cert(&hostname, slug.as_deref()).await;
+            if let Err(e) = res {
+                tracing::warn!(%hostname, ?e, "custom-domain cert issuance failed");
+            }
+        });
+    } else {
+        tracing::warn!(
+            hostname = %domain.hostname,
+            "verified but no cert issuer configured — no HTTPS cert will be issued"
+        );
+    }
+    Redirect::to("/domains").into_response()
 }
 
 async fn delete_domain(
