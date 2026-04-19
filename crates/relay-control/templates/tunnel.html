@@ -24,37 +24,7 @@
 </header>
 
 <div class="captures-split" data-tunnel-id="{{ tunnel.id }}">
-  <aside class="captures-list-pane">
-    <div class="captures-list-header">
-      <strong>requests <span class="muted" id="captures-count">{{ captures.len() }}</span></strong>
-      {% if !captures.is_empty() %}
-      <form method="post" action="/tunnels/{{ tunnel.id }}/captures/clear"
-            onsubmit="return confirm('Delete every captured request on this tunnel?');">
-        <button type="submit" class="icon-btn danger" title="clear all">{{ crate::icons::icon("trash")|safe }}</button>
-      </form>
-      {% endif %}
-    </div>
-    <p id="captures-empty" class="muted captures-empty" {% if !captures.is_empty() %}hidden{% endif %}>
-      No captured requests yet.
-      {% if !tunnel.inspect %}Inspection is off for this tunnel — drop <code>--no-inspect</code> on the CLI to capture.{% endif %}
-    </p>
-    <div class="captures-list" id="captures-list" role="listbox">
-      {% for c in captures %}
-      <a class="capture-row"
-         data-capture-id="{{ c.id }}"
-         href="/tunnels/{{ tunnel.id }}/captures/{{ c.id }}"
-         hx-get="/tunnels/{{ tunnel.id }}/captures/{{ c.id }}/panel"
-         hx-target="#detail-pane"
-         hx-swap="innerHTML"
-         hx-push-url="/tunnels/{{ tunnel.id }}/captures/{{ c.id }}">
-        <span class="method method-{{ c.method }}">{{ c.method }}</span>
-        <span class="path mono truncate">{{ c.path }}</span>
-        <span class="status status-{{ crate::templates::status_class(c.status) }}">{{ crate::templates::opt_status(c.status) }}</span>
-        <span class="duration muted">{{ crate::templates::duration_short(c.duration_ms) }}</span>
-      </a>
-      {% endfor %}
-    </div>
-  </aside>
+  {% include "_captures_list.html" %}
   <section class="capture-detail" id="detail-pane">
     <div class="detail-empty">
       <p class="muted">Select a request on the left to inspect.</p>

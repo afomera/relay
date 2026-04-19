@@ -11,7 +11,9 @@
   const list = document.getElementById('captures-list');
   const detail = document.getElementById('detail-pane');
   const empty = document.getElementById('captures-empty');
+  const noMatches = document.getElementById('captures-no-matches');
   const count = document.getElementById('captures-count');
+  const filterInput = document.getElementById('captures-filter');
   if (!list || !detail) return;
 
   const durationShort = ms => ms == null ? '—' : (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(2)}s`);
@@ -25,6 +27,43 @@
     if (s >= 100) return '1xx';
     return 'none';
   };
+
+  // Filter state — compiled on every input change so SSE-appended rows can
+  // be tested against it cheaply. Glob-style: `*` matches any chars, every
+  // other regex metacharacter is escaped. Case-insensitive, substring match.
+  let activeFilter = null;
+  const compileFilter = (raw) => {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) return null;
+    const escaped = trimmed.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    try { return new RegExp(escaped, 'i'); } catch { return null; }
+  };
+  // Built from `${method} ${path} ${status}` so users can filter by any of
+  // those (e.g. "POST", "posts/*", "500").
+  const haystackFor = (row) => {
+    const m = row.querySelector('.method');
+    const p = row.querySelector('.path');
+    const s = row.querySelector('.status');
+    return `${m ? m.textContent : ''} ${p ? p.textContent : ''} ${s ? s.textContent : ''}`;
+  };
+  const rowMatches = (row) => !activeFilter || activeFilter.test(haystackFor(row));
+  const applyFilter = () => {
+    const rows = list.querySelectorAll('.capture-row');
+    let visible = 0;
+    rows.forEach(row => {
+      const match = rowMatches(row);
+      row.hidden = !match;
+      if (match) visible += 1;
+    });
+    if (count) count.textContent = activeFilter ? `${visible}/${rows.length}` : String(rows.length);
+    if (noMatches) noMatches.hidden = !(activeFilter && rows.length > 0 && visible === 0);
+  };
+  if (filterInput) {
+    filterInput.addEventListener('input', () => {
+      activeFilter = compileFilter(filterInput.value);
+      applyFilter();
+    });
+  }
 
   // Mark the row whose capture id matches the current URL. Called on load
   // and after each HTMX swap so back/forward nav keeps the list in sync.
@@ -81,7 +120,8 @@
     if (empty && !empty.hidden) empty.hidden = true;
     list.prepend(row);
     if (window.htmx) window.htmx.process(row);
-    if (count) count.textContent = String(list.querySelectorAll('.capture-row').length);
+    if (!rowMatches(row)) row.hidden = true;
+    applyFilter();
     if (lastSeenEl) lastSeenEl.textContent = 'last seen just now';
   });
 
@@ -115,7 +155,8 @@
     else row.click();
   };
   const move = (delta) => {
-    const rows = Array.from(list.querySelectorAll('.capture-row'));
+    // Only walk visible rows so j/k skips over anything hidden by the filter.
+    const rows = Array.from(list.querySelectorAll('.capture-row')).filter(r => !r.hidden);
     if (rows.length === 0) return;
     const current = rows.findIndex(r => r.classList.contains('selected'));
     const next = Math.max(0, Math.min(rows.length - 1,

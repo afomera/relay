@@ -314,6 +314,33 @@ form.inline { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
 .captures-list-header form { margin: 0; }
 .captures-empty { padding: 1rem 0.85rem; font-size: 0.8rem; margin: 0; }
 
+.captures-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--atlas-border-subtle);
+}
+.captures-search svg {
+  width: 14px;
+  height: 14px;
+  color: var(--atlas-text-tertiary);
+  flex-shrink: 0;
+}
+.captures-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--atlas-text-primary);
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+.captures-search input:focus { outline: none; }
+.captures-search input::placeholder { color: var(--atlas-text-muted); }
+.captures-search:focus-within svg { color: var(--atlas-accent); }
+
 .captures-list {
   flex: 1;
   overflow-y: auto;
