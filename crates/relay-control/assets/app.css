@@ -358,6 +358,10 @@ form.inline { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
   cursor: pointer;
   text-decoration: none;
 }
+/* `.capture-row { display: grid }` has higher specificity than the UA's
+   `[hidden] { display: none }`, so without this the filter would update the
+   count but the rows would still render. */
+.capture-row[hidden] { display: none; }
 .capture-row:hover {
   background: var(--atlas-surface-2);
   text-decoration: none;
