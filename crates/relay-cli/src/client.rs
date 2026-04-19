@@ -1,12 +1,18 @@
 //! QUIC client: accept per-request streams from the server and proxy them to
 //! a local service.
 
+use crate::ui::ReqEvent;
 use futures::StreamExt;
 use relay_proto::{HttpRequestHeader, HttpResponseHeader, StreamOpen, TcpConnectHeader};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::UnboundedSender;
 
-pub async fn accept_and_proxy(conn: quinn::Connection, local_port: u16) -> anyhow::Result<()> {
+pub async fn accept_and_proxy(
+    conn: quinn::Connection,
+    local_port: u16,
+    events: Option<UnboundedSender<ReqEvent>>,
+) -> anyhow::Result<()> {
     let http_client =
         reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build()?;
 
@@ -23,8 +29,9 @@ pub async fn accept_and_proxy(conn: quinn::Connection, local_port: u16) -> anyho
             }
         };
         let client = http_client.clone();
+        let ev = events.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_stream(send, recv, local_port, client).await {
+            if let Err(e) = handle_stream(send, recv, local_port, client, ev).await {
                 tracing::warn!(?e, "stream proxy failed");
             }
         });
@@ -36,13 +43,14 @@ async fn handle_stream(
     mut recv: quinn::RecvStream,
     local_port: u16,
     http_client: reqwest::Client,
+    events: Option<UnboundedSender<ReqEvent>>,
 ) -> anyhow::Result<()> {
     let open: StreamOpen = relay_proto::read_frame(&mut recv).await?;
     match open {
         StreamOpen::Http(hdr) if is_ws_upgrade_request(&hdr) => {
             proxy_http_upgrade(send, recv, hdr, local_port).await
         }
-        StreamOpen::Http(hdr) => proxy_http(send, recv, hdr, local_port, http_client).await,
+        StreamOpen::Http(hdr) => proxy_http(send, recv, hdr, local_port, http_client, events).await,
         StreamOpen::Tcp(hdr) => proxy_tcp(send, recv, hdr, local_port).await,
     }
 }
@@ -124,7 +132,12 @@ async fn proxy_http(
     hdr: HttpRequestHeader,
     local_port: u16,
     http_client: reqwest::Client,
+    events: Option<UnboundedSender<ReqEvent>>,
 ) -> anyhow::Result<()> {
+    let started = std::time::Instant::now();
+    let method_str = hdr.method.clone();
+    let path_str = hdr.path.clone();
+
     let url = format!("http://127.0.0.1:{local_port}{}", hdr.path);
     let method = reqwest::Method::from_bytes(hdr.method.as_bytes())?;
     let mut req = http_client.request(method, &url);
@@ -156,6 +169,7 @@ async fn proxy_http(
             )
             .await?;
             let _ = send.finish();
+            emit_event(&events, method_str, path_str, 502, started.elapsed().as_millis() as u64);
             return Ok(());
         }
     };
@@ -173,6 +187,11 @@ async fn proxy_http(
     )
     .await?;
 
+    // Emit once headers are known — body may stream indefinitely (SSE, long
+    // polls), and time-to-first-byte is what the developer actually wants to
+    // see in the live table.
+    emit_event(&events, method_str, path_str, status, started.elapsed().as_millis() as u64);
+
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let bytes = chunk?;
@@ -180,6 +199,18 @@ async fn proxy_http(
     }
     let _ = send.finish();
     Ok(())
+}
+
+fn emit_event(
+    events: &Option<UnboundedSender<ReqEvent>>,
+    method: String,
+    path: String,
+    status: u16,
+    duration_ms: u64,
+) {
+    if let Some(tx) = events {
+        let _ = tx.send(ReqEvent { method, path, status, duration_ms });
+    }
 }
 
 /// Proxies an HTTP upgrade (e.g. WebSocket) to the local service. We hand-roll

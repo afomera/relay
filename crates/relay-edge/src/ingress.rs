@@ -32,6 +32,12 @@ pub(crate) struct AppState {
     pub(crate) cfg: Arc<EdgeConfig>,
 }
 
+/// Marker set by each listener into the request extensions so `handle_inner`
+/// can fill `X-Forwarded-Proto` correctly without guessing. The HTTP listener
+/// inserts "http", the HTTPS listener inserts "https".
+#[derive(Clone, Copy)]
+pub(crate) struct RequestScheme(pub(crate) &'static str);
+
 pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Result<()> {
     let state = AppState { reg, cfg: cfg.clone() };
     let app = axum::Router::new().fallback(handle).with_state(state);
@@ -57,7 +63,8 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
                 Ok(s) => s,
                 Err(_) => return,
             };
-            let hyper_service = hyper::service::service_fn(move |req| {
+            let hyper_service = hyper::service::service_fn(move |mut req: Request<_>| {
+                req.extensions_mut().insert(RequestScheme("http"));
                 let mut s = tower_service.clone();
                 async move { s.call(req).await }
             });
@@ -170,8 +177,17 @@ async fn handle_inner(
     let method_str = req.method().to_string();
     let path_str =
         req.uri().path_and_query().map(|p| p.to_string()).unwrap_or_else(|| "/".to_string());
-    let req_headers = collect_headers(req.headers());
+    let mut req_headers = collect_headers(req.headers());
     let client_ip = resolve_client_ip(remote, req.headers());
+    // Default to "https" when the listener didn't tag the request (shouldn't
+    // happen in practice, but picks the right behavior if the marker ever goes
+    // missing — almost all real traffic is TLS-terminated at the edge).
+    let scheme = req
+        .extensions()
+        .get::<RequestScheme>()
+        .map(|s| s.0)
+        .unwrap_or("https");
+    inject_forwarded_headers(&mut req_headers, &host, scheme, &client_ip);
 
     let header = HttpRequestHeader {
         tunnel_id: handle.tunnel_id,
@@ -372,6 +388,39 @@ fn collect_headers(h: &HeaderMap) -> Vec<(String, String)> {
     h.iter()
         .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.as_str().to_string(), s.to_string())))
         .collect()
+}
+
+/// Populate `X-Forwarded-Host`/`-Proto`/`-For` so local services can generate
+/// correct absolute URLs and see the real client IP. `-Host` and `-Proto`
+/// preserve any upstream value (we may be behind Cloudflare/ALB one day);
+/// `-For` always appends our observed client IP to the chain, per RFC 7239.
+fn inject_forwarded_headers(
+    headers: &mut Vec<(String, String)>,
+    host: &str,
+    scheme: &str,
+    client_ip: &str,
+) {
+    if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("x-forwarded-host")) {
+        headers.push(("x-forwarded-host".into(), host.to_string()));
+    }
+    if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("x-forwarded-proto")) {
+        headers.push(("x-forwarded-proto".into(), scheme.to_string()));
+    }
+    let mut appended = false;
+    for (k, v) in headers.iter_mut() {
+        if k.eq_ignore_ascii_case("x-forwarded-for") {
+            if v.is_empty() {
+                *v = client_ip.to_string();
+            } else {
+                *v = format!("{v}, {client_ip}");
+            }
+            appended = true;
+            break;
+        }
+    }
+    if !appended {
+        headers.push(("x-forwarded-for".into(), client_ip.to_string()));
+    }
 }
 
 /// Hop-by-hop headers that we strip when delivering the response. We don't

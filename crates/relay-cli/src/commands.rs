@@ -24,7 +24,7 @@ pub mod auth {
                     cfg.server = Some(s);
                 }
                 let server_host = cfg.server.as_deref().unwrap_or(DEFAULT_SERVER).to_string();
-                let dashboard = dashboard_url_from(&server_host);
+                let dashboard = relay_cli::dashboard_url_from(&server_host);
                 let tok =
                     crate::commands::auth_web::run_browser_flow(&dashboard, no_browser).await?;
                 save_token(&mut cfg, tok, server)?;
@@ -63,13 +63,6 @@ pub mod auth {
         println!("saved token to {}", path.display());
         println!("server: {active_server}");
         Ok(())
-    }
-
-    /// The server field is `host:port` for UDP/QUIC; the dashboard is HTTPS
-    /// on the same host (default port 443). Strip the port for the browser URL.
-    fn dashboard_url_from(server: &str) -> String {
-        let host = server.split(':').next().unwrap_or(server);
-        format!("https://{host}")
     }
 }
 
@@ -256,9 +249,11 @@ pub mod http {
 
     use relay_proto::{ClientMsg, PROTOCOL_VERSION, RegisterTunnel, ServerMsg, TunnelKind};
     use tokio::sync::Mutex;
+    use tokio::sync::mpsc::UnboundedSender;
     use uuid::Uuid;
 
     use super::RuntimeCtx;
+    use relay_cli::ui::{self, ReqEvent};
     use relay_cli::{client, tls};
 
     /// Outcome of a single connect-register-run cycle.
@@ -288,8 +283,13 @@ pub mod http {
         let mut desired = domain.or(hostname);
         let mut backoff = Duration::from_millis(500);
 
+        // One printer task for the whole CLI lifetime — reconnects reuse it so
+        // streaming rows continue past a session drop.
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ReqEvent>();
+        ui::spawn_request_printer(rx);
+
         loop {
-            match session(&ctx, port, desired.clone(), inspect).await {
+            match session(&ctx, port, desired.clone(), inspect, tx.clone()).await {
                 Ok((Outcome::Fatal(e), _)) => return Err(e),
                 Ok((Outcome::CtrlC, _)) => return Ok(()),
                 Ok((Outcome::Disconnected, assigned)) => {
@@ -324,6 +324,7 @@ pub mod http {
         port: u16,
         desired: Option<String>,
         inspect: bool,
+        events: UnboundedSender<ReqEvent>,
     ) -> anyhow::Result<(Outcome, Option<String>)> {
         let server_name = ctx.server.split(':').next().unwrap_or("localhost").to_string();
 
@@ -406,13 +407,8 @@ pub mod http {
 
         let assigned_hostname = strip_url(&public_url);
 
-        println!("─────────────────────────────────────────────");
-        println!("  relay tunnel established");
-        println!("  → {public_url}  →  http://127.0.0.1:{port}");
-        if inspect {
-            println!("  inspection: on");
-        }
-        println!("─────────────────────────────────────────────");
+        let dashboard = relay_cli::dashboard_url_from(&ctx.server);
+        ui::print_http_banner(&dashboard, &public_url, port, inspect);
 
         let send = Arc::new(Mutex::new(send));
         let send_for_pump = send.clone();
@@ -436,7 +432,7 @@ pub mod http {
 
         let proxy_conn = conn.clone();
         let outcome = tokio::select! {
-            _ = client::accept_and_proxy(proxy_conn, port) => Outcome::Disconnected,
+            _ = client::accept_and_proxy(proxy_conn, port, Some(events)) => Outcome::Disconnected,
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("\nshutting down…");
                 conn.close(0u32.into(), b"cli ctrl-c");
@@ -492,7 +488,7 @@ pub mod tcp {
 
     use super::RuntimeCtx;
     use super::http::FirstAddr;
-    use relay_cli::{client, tls};
+    use relay_cli::{client, tls, ui};
 
     pub async fn run(ctx: RuntimeCtx, port: u16) -> anyhow::Result<()> {
         if ctx.token.is_empty() {
@@ -548,10 +544,8 @@ pub mod tcp {
             other => anyhow::bail!("unexpected reply {other:?}"),
         };
 
-        println!("─────────────────────────────────────────────");
-        println!("  relay tcp tunnel established");
-        println!("  → {public_url}  →  127.0.0.1:{port}");
-        println!("─────────────────────────────────────────────");
+        let dashboard = relay_cli::dashboard_url_from(&ctx.server);
+        ui::print_tcp_banner(&dashboard, &public_url, port);
 
         let send = Arc::new(Mutex::new(send));
         let send_for_pump = send.clone();
@@ -575,7 +569,7 @@ pub mod tcp {
 
         let proxy_conn = conn.clone();
         tokio::select! {
-            res = client::accept_and_proxy(proxy_conn, port) => res,
+            res = client::accept_and_proxy(proxy_conn, port, None) => res,
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("\nshutting down…");
                 conn.close(0u32.into(), b"cli ctrl-c");

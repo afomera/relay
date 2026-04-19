@@ -108,8 +108,10 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     let cfg = config::load()?;
+    let raw_server =
+        cli.server.or(cfg.server.clone()).unwrap_or_else(|| DEFAULT_SERVER.to_string());
     let runtime = commands::RuntimeCtx {
-        server: cli.server.or(cfg.server.clone()).unwrap_or_else(|| DEFAULT_SERVER.to_string()),
+        server: relay_cli::normalize_server(&raw_server),
         token: cli.token.or(cfg.token.clone()).unwrap_or_default(),
         insecure: cli.insecure,
         cafile: cli.cafile,

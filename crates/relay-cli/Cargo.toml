@@ -37,4 +37,6 @@ httparse.workspace = true
 tokio-util.workspace = true
 tokio-stream.workspace = true
 http.workspace = true
+owo-colors = { version = "4", features = ["supports-colors"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 relay-proto = { path = "../relay-proto" }

@@ -17,7 +17,7 @@ use tokio_rustls::TlsAcceptor;
 use tower::Service;
 
 use crate::config::EdgeConfig;
-use crate::ingress::AppState;
+use crate::ingress::{AppState, RequestScheme};
 use crate::registry::TunnelRegistry;
 
 pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Result<()> {
@@ -69,7 +69,8 @@ pub async fn run(cfg: Arc<EdgeConfig>, reg: Arc<TunnelRegistry>) -> anyhow::Resu
                 Ok(s) => s,
                 Err(_) => return,
             };
-            let hyper_service = hyper::service::service_fn(move |req| {
+            let hyper_service = hyper::service::service_fn(move |mut req: hyper::Request<_>| {
+                req.extensions_mut().insert(RequestScheme("https"));
                 let mut s = tower_service.clone();
                 async move { s.call(req).await }
             });
