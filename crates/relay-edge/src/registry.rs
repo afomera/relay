@@ -22,6 +22,10 @@ pub struct TunnelHandle {
     /// tunnel is public. Lives only in memory for the duration of the QUIC
     /// connection — never persisted.
     pub password_hash: Option<String>,
+    /// Stable short fingerprint of the raw password, used to bind session
+    /// cookies to the current password so that changing the password
+    /// invalidates previously issued cookies. `Some` iff `password_hash` is.
+    pub password_fingerprint: Option<String>,
 }
 
 #[derive(Default)]

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHasher, SaltString};
+use sha2::{Digest, Sha256};
 use relay_proto::{
     ALPN, ClientMsg, Feature, PROTOCOL_VERSION, ServerHello, ServerMsg, TunnelKind,
     TunnelRegistered, TunnelRejected,
@@ -235,6 +236,7 @@ async fn handle_register(
             return Ok(());
         }
     };
+    let password_fingerprint = password_fingerprint(req.password.as_deref());
 
     let handle = TunnelHandle {
         tunnel_id,
@@ -245,6 +247,7 @@ async fn handle_register(
         inspect: req.inspect,
         tcp_port: None,
         password_hash,
+        password_fingerprint,
     };
 
     if reg.insert(handle).is_err() {
@@ -316,6 +319,7 @@ async fn handle_tcp_register(
         inspect: false,
         tcp_port: Some(port),
         password_hash: None,
+        password_fingerprint: None,
     };
     if reg.insert(handle).is_err() {
         pool.release(port);
@@ -357,4 +361,28 @@ fn hash_password(pw: Option<&str>) -> anyhow::Result<Option<String>> {
         .map_err(|e| anyhow::anyhow!("argon2: {e}"))?
         .to_string();
     Ok(Some(phc))
+}
+
+/// Deterministic short tag that session cookies use to prove they were
+/// issued against the current password. Unlike the argon2 PHC (which
+/// includes a random salt) this is stable across reconnects with the same
+/// password, so same-password reconnects preserve sessions while a real
+/// password change invalidates them.
+fn password_fingerprint(pw: Option<&str>) -> Option<String> {
+    let pw = pw?;
+    if pw.is_empty() {
+        return None;
+    }
+    let digest = Sha256::digest(pw.as_bytes());
+    Some(hex_encode(&digest[..8]))
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
 }

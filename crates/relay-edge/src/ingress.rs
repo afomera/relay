@@ -645,7 +645,8 @@ async fn password_gate(
         }
 
         let expiry = time::OffsetDateTime::now_utc().unix_timestamp() + SESSION_TTL_SECS;
-        let value = format!("{}|{}", handle.tunnel_id.simple(), expiry);
+        let fp = handle.password_fingerprint.as_deref().unwrap_or("");
+        let value = format!("{}|{}|{}", handle.tunnel_id.simple(), expiry, fp);
         let cookie = Cookie::build((cookie_name, value))
             .path("/")
             .http_only(true)
@@ -661,7 +662,8 @@ async fn password_gate(
     // Any other request: valid signed cookie → proceed; otherwise show form.
     let jar = PrivateCookieJar::from_headers(req.headers(), state.cfg.cookie_key.clone());
     if let Some(c) = jar.get(&cookie_name) {
-        if cookie_is_valid(c.value(), handle.tunnel_id) {
+        let expected_fp = handle.password_fingerprint.as_deref().unwrap_or("");
+        if cookie_is_valid(c.value(), handle.tunnel_id, expected_fp) {
             return Ok(GateResult::Proceed(req));
         }
     }
@@ -673,11 +675,15 @@ fn tunnel_cookie_name(tunnel_id: Uuid) -> String {
     format!("relay_tun_{}", tunnel_id.simple())
 }
 
-fn cookie_is_valid(value: &str, tunnel_id: Uuid) -> bool {
-    let mut parts = value.splitn(2, '|');
+fn cookie_is_valid(value: &str, tunnel_id: Uuid, expected_fp: &str) -> bool {
+    let mut parts = value.splitn(3, '|');
     let Some(tid_hex) = parts.next() else { return false };
     let Some(exp_str) = parts.next() else { return false };
+    let Some(fp) = parts.next() else { return false };
     if tid_hex != tunnel_id.simple().to_string() {
+        return false;
+    }
+    if fp != expected_fp {
         return false;
     }
     let Ok(exp) = exp_str.parse::<i64>() else { return false };
