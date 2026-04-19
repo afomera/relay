@@ -20,8 +20,8 @@ use crate::auth::{
 };
 use crate::state::AppState;
 use crate::templates::{
-    CapturePage, CliAuthorizePage, DomainsPage, HomePage, LoginPage, OrgCtx, ReservationsPage,
-    TokensPage, TunnelPage,
+    CapturePage, CapturePanelPartial, CliAuthorizePage, DomainsPage, HomePage, LoginPage, OrgCtx,
+    ReservationsPage, TokensPage, TunnelPage,
 };
 
 pub fn router(state: AppState) -> Router {
@@ -47,7 +47,9 @@ pub fn router(state: AppState) -> Router {
         .route("/tunnels/delete-disconnected", post(delete_disconnected_route))
         .route("/tunnels/:id/captures/clear", post(clear_captures_route))
         .route("/tunnels/:tid/captures/:cid", get(capture_detail))
+        .route("/tunnels/:tid/captures/:cid/panel", get(capture_panel))
         .route("/_static/app.css", get(static_css))
+        .route("/_static/captures.js", get(static_captures_js))
         .route("/events/tunnels", get(sse_tunnel_events))
         .route("/tunnels/:id/events", get(sse_tunnel_captures))
         .route("/healthz", get(healthz))
@@ -112,6 +114,15 @@ async fn static_css() -> Response {
         .header("cache-control", "no-cache, must-revalidate")
         .body(axum::body::Body::from(CSS))
         .expect("static css response")
+}
+
+async fn static_captures_js() -> Response {
+    const JS: &str = include_str!("../assets/captures.js");
+    Response::builder()
+        .header("content-type", "application/javascript; charset=utf-8")
+        .header("cache-control", "no-cache, must-revalidate")
+        .body(axum::body::Body::from(JS))
+        .expect("static captures.js response")
 }
 
 // ---------------------------------------------------------------------------
@@ -220,10 +231,18 @@ async fn capture_detail(
         crate::templates::classify_body(&req_headers, capture.req_body.as_deref().unwrap_or(&[]));
     let resp_body =
         crate::templates::classify_body(&resp_headers, capture.resp_body.as_deref().unwrap_or(&[]));
+    let captures = dao::list_captures(&state.db, tunnel.id, 200).await.unwrap_or_default();
+    let url = crate::templates::render_public_url(
+        &state.config.tunnel_scheme,
+        &state.config.tunnel_public_port,
+        &tunnel.hostname,
+    );
     CapturePage {
         ctx: OrgCtx::from(&user, &org),
         nav: "tunnels",
         tunnel,
+        url,
+        captures,
         capture,
         req_headers,
         resp_headers,
@@ -231,6 +250,37 @@ async fn capture_detail(
         resp_body,
     }
     .into_response()
+}
+
+/// HTMX partial: just the capture detail panel, no page chrome. Driven by
+/// clicks on rows in the split-view capture list.
+async fn capture_panel(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path((tid, cid)): Path<(Uuid, Uuid)>,
+) -> Response {
+    let AuthedUser { org, .. } = match require_auth(&state, &jar).await {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
+    let Some(tunnel) = dao::find_tunnel_for_org(&state.db, org.id, tid).await.ok().flatten() else {
+        return (StatusCode::NOT_FOUND, "tunnel not found").into_response();
+    };
+    let Some(capture) = dao::get_capture(&state.db, cid).await.ok().flatten() else {
+        return (StatusCode::NOT_FOUND, "capture not found").into_response();
+    };
+    if capture.tunnel_id != tunnel.id {
+        return (StatusCode::NOT_FOUND, "capture not found").into_response();
+    }
+    let req_headers = crate::templates::parse_headers_json(&capture.req_headers_json);
+    let resp_headers =
+        crate::templates::parse_headers_json(capture.resp_headers_json.as_deref().unwrap_or("[]"));
+    let req_body =
+        crate::templates::classify_body(&req_headers, capture.req_body.as_deref().unwrap_or(&[]));
+    let resp_body =
+        crate::templates::classify_body(&resp_headers, capture.resp_body.as_deref().unwrap_or(&[]));
+    CapturePanelPartial { tunnel, capture, req_headers, resp_headers, req_body, resp_body }
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------

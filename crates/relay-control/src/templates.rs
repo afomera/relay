@@ -103,6 +103,22 @@ pub struct CapturePage {
     pub ctx: OrgCtx,
     pub nav: &'static str,
     pub tunnel: Tunnel,
+    pub url: String,
+    pub captures: Vec<InspectionCapture>,
+    pub capture: InspectionCapture,
+    pub req_headers: Vec<(String, String)>,
+    pub resp_headers: Vec<(String, String)>,
+    pub req_body: RenderedBody,
+    pub resp_body: RenderedBody,
+}
+
+/// Renders only the capture detail panel — no base layout, no page chrome.
+/// Returned to HTMX swap requests so the list stays put and just the right
+/// pane updates.
+#[derive(Template)]
+#[template(path = "capture_panel.html")]
+pub struct CapturePanelPartial {
+    pub tunnel: Tunnel,
     pub capture: InspectionCapture,
     pub req_headers: Vec<(String, String)>,
     pub resp_headers: Vec<(String, String)>,
@@ -179,6 +195,20 @@ pub fn opt_status(s: &Option<i64>) -> String {
     match s {
         Some(n) => n.to_string(),
         None => "—".into(),
+    }
+}
+
+/// CSS class bucket for an HTTP status — lets the dashboard tint the list
+/// row without hardcoding colors per code. 1xx covers informational replies
+/// like 101 Switching Protocols (WebSocket upgrades).
+pub fn status_class(s: &Option<i64>) -> &'static str {
+    match s {
+        Some(n) if (100..200).contains(n) => "1xx",
+        Some(n) if (200..300).contains(n) => "2xx",
+        Some(n) if (300..400).contains(n) => "3xx",
+        Some(n) if (400..500).contains(n) => "4xx",
+        Some(n) if (500..600).contains(n) => "5xx",
+        _ => "none",
     }
 }
 
