@@ -132,6 +132,9 @@ pub struct CapturePanelPartial {
 pub enum RenderedBody {
     Empty,
     Text { text: String, language: &'static str },
+    /// Parsed `application/x-www-form-urlencoded` body: percent-decoded
+    /// key/value pairs ready to render as a table.
+    FormParams { params: Vec<(String, String)> },
     Binary { bytes: usize },
 }
 
@@ -145,6 +148,15 @@ pub fn classify_body(headers: &[(String, String)], body: &[u8]) -> RenderedBody 
         .map(|(_, v)| v.to_ascii_lowercase())
         .unwrap_or_default();
 
+    // Form bodies get their own renderer — a table is easier to scan than a
+    // blob of `k=v&k=v` urlencoded text.
+    if ct.contains("x-www-form-urlencoded") {
+        if let Ok(text) = std::str::from_utf8(body) {
+            return RenderedBody::FormParams { params: parse_form_urlencoded(text) };
+        }
+        return RenderedBody::Binary { bytes: body.len() };
+    }
+
     let language: &'static str = if ct.contains("json") {
         "json"
     } else if ct.contains("html") {
@@ -157,7 +169,7 @@ pub fn classify_body(headers: &[(String, String)], body: &[u8]) -> RenderedBody 
         "yaml"
     } else if ct.contains("css") {
         "css"
-    } else if ct.starts_with("text/") || ct.contains("x-www-form-urlencoded") {
+    } else if ct.starts_with("text/") {
         "plaintext"
     } else {
         return RenderedBody::Binary { bytes: body.len() };
@@ -177,6 +189,25 @@ pub fn classify_body(headers: &[(String, String)], body: &[u8]) -> RenderedBody 
     };
 
     RenderedBody::Text { text: rendered, language }
+}
+
+/// Parse an `application/x-www-form-urlencoded` string into decoded key/value
+/// pairs. Form encoding uses `+` for space (distinct from generic percent
+/// encoding), so we replace `+` → ` ` before running percent decoding.
+fn parse_form_urlencoded(input: &str) -> Vec<(String, String)> {
+    input
+        .split('&')
+        .filter(|s| !s.is_empty())
+        .map(|pair| {
+            let (raw_k, raw_v) = pair.split_once('=').unwrap_or((pair, ""));
+            (decode_form_component(raw_k), decode_form_component(raw_v))
+        })
+        .collect()
+}
+
+fn decode_form_component(s: &str) -> String {
+    let spaced = s.replace('+', " ");
+    urlencoding::decode(&spaced).map(|cow| cow.into_owned()).unwrap_or(spaced)
 }
 
 pub fn parse_headers_json(s: &str) -> Vec<(String, String)> {

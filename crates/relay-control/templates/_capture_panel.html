@@ -26,6 +26,15 @@
         <p class="muted">empty</p>
       {% when crate::templates::RenderedBody::Text { text, language } %}
         <pre class="body-block"><code class="language-{{ language }}">{{ text }}</code></pre>
+      {% when crate::templates::RenderedBody::FormParams { params } %}
+        <table class="kv-table">
+          <thead><tr><th>key</th><th>value</th></tr></thead>
+          <tbody>
+            {% for (k, v) in params %}
+            <tr><td class="kv-key">{{ k }}</td><td class="kv-value">{{ v }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       {% when crate::templates::RenderedBody::Binary { bytes } %}
         <p class="muted">binary, {{ bytes }} bytes (preview not shown)</p>
     {% endmatch %}
@@ -44,6 +53,15 @@
         <p class="muted">empty</p>
       {% when crate::templates::RenderedBody::Text { text, language } %}
         <pre class="body-block"><code class="language-{{ language }}">{{ text }}</code></pre>
+      {% when crate::templates::RenderedBody::FormParams { params } %}
+        <table class="kv-table">
+          <thead><tr><th>key</th><th>value</th></tr></thead>
+          <tbody>
+            {% for (k, v) in params %}
+            <tr><td class="kv-key">{{ k }}</td><td class="kv-value">{{ v }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       {% when crate::templates::RenderedBody::Binary { bytes } %}
         <p class="muted">binary, {{ bytes }} bytes (preview not shown)</p>
     {% endmatch %}

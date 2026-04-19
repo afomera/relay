@@ -482,6 +482,34 @@ pre.body-block code {
   background: transparent !important;
 }
 
+table.kv-table {
+  background: var(--atlas-surface-2);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.8rem;
+}
+table.kv-table th {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.7rem;
+  color: var(--atlas-text-muted);
+  background: transparent;
+}
+table.kv-table td {
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid var(--atlas-border-subtle);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+table.kv-table tbody tr:last-child td { border-bottom: 0; }
+table.kv-table tbody tr:hover { background: transparent; }
+table.kv-table .kv-key {
+  color: var(--atlas-accent);
+  white-space: nowrap;
+  width: 1%;
+  font-weight: 500;
+}
+table.kv-table .kv-value { color: var(--atlas-text-primary); }
+
 /* token reveal */
 
 .token {
