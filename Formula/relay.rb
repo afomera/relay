@@ -1,14 +1,14 @@
 class Relay < Formula
   desc "Self-hostable tunneling — open public URLs for local services over QUIC"
   homepage "https://withrelay.dev"
-  version "0.0.16"
+  version "0.0.17"
   license "MIT"
 
   depends_on arch: :arm64
   depends_on :macos
 
-  url "https://github.com/afomera/relay/releases/download/v0.0.16/relay-v0.0.16-aarch64-apple-darwin.tar.gz"
-  sha256 "622dcff3e668ef6146c63ecc1cc6b04ab177829658e9698ad068e3f29361c317"
+  url "https://github.com/afomera/relay/releases/download/v0.0.17/relay-v0.0.17-aarch64-apple-darwin.tar.gz"
+  sha256 "a5b78ca8086d4bda4576146e1270ab2411d6127ac7c0b89a26f06c271be992c0"
 
   def install
     bin.install "relay"
