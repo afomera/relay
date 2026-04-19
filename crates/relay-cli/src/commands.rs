@@ -273,6 +273,7 @@ pub mod http {
         domain: Option<String>,
         inspect: bool,
         reconnect: bool,
+        password: Option<String>,
     ) -> anyhow::Result<()> {
         // Fail fast with a useful message before we burn cycles on a QUIC
         // handshake that would just be rejected by the server anyway.
@@ -289,7 +290,8 @@ pub mod http {
         ui::spawn_request_printer(rx);
 
         loop {
-            match session(&ctx, port, desired.clone(), inspect, tx.clone()).await {
+            match session(&ctx, port, desired.clone(), inspect, password.clone(), tx.clone()).await
+            {
                 Ok((Outcome::Fatal(e), _)) => return Err(e),
                 Ok((Outcome::CtrlC, _)) => return Ok(()),
                 Ok((Outcome::Disconnected, assigned)) => {
@@ -324,6 +326,7 @@ pub mod http {
         port: u16,
         desired: Option<String>,
         inspect: bool,
+        password: Option<String>,
         events: UnboundedSender<ReqEvent>,
     ) -> anyhow::Result<(Outcome, Option<String>)> {
         let server_name = ctx.server.split(':').next().unwrap_or("localhost").to_string();
@@ -380,6 +383,7 @@ pub mod http {
                 hostname: desired.clone(),
                 labels: vec![],
                 inspect,
+                password: password.clone(),
             }),
         )
         .await?;
@@ -408,7 +412,7 @@ pub mod http {
         let assigned_hostname = strip_url(&public_url);
 
         let dashboard = relay_cli::dashboard_url_from(&ctx.server);
-        ui::print_http_banner(&dashboard, &public_url, port, inspect);
+        ui::print_http_banner(&dashboard, &public_url, port, inspect, password.is_some());
 
         let send = Arc::new(Mutex::new(send));
         let send_for_pump = send.clone();
@@ -535,6 +539,7 @@ pub mod tcp {
                 hostname: None,
                 labels: vec![],
                 inspect: false,
+                password: None,
             }),
         )
         .await?;

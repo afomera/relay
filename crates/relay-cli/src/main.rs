@@ -68,6 +68,12 @@ enum Command {
         /// Exit on the first disconnect instead of reconnecting with backoff.
         #[arg(long)]
         no_reconnect: bool,
+        /// Require visitors to enter this password before the tunnel proxies
+        /// their request. The edge shows a login page on first visit and sets
+        /// a signed cookie on success. Ephemeral — clears when the tunnel
+        /// disconnects; reconnect must pass `--password` again.
+        #[arg(long)]
+        password: Option<String>,
     },
 
     /// Open a raw TCP tunnel to a local port.
@@ -119,8 +125,17 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Auth(sub) => commands::auth::run(sub, cfg).await,
-        Command::Http { port, hostname, domain, no_inspect, no_reconnect } => {
-            commands::http::run(runtime, port, hostname, domain, !no_inspect, !no_reconnect).await
+        Command::Http { port, hostname, domain, no_inspect, no_reconnect, password } => {
+            commands::http::run(
+                runtime,
+                port,
+                hostname,
+                domain,
+                !no_inspect,
+                !no_reconnect,
+                password,
+            )
+            .await
         }
         Command::Tcp { port } => commands::tcp::run(runtime, port).await,
     }

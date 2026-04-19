@@ -13,13 +13,22 @@ pub struct ReqEvent {
     pub duration_ms: u64,
 }
 
-pub fn print_http_banner(dashboard: &str, public_url: &str, port: u16, inspect: bool) {
+pub fn print_http_banner(
+    dashboard: &str,
+    public_url: &str,
+    port: u16,
+    inspect: bool,
+    password_protected: bool,
+) {
     println!();
     println!("  {}", "relay tunnel established".if_supports_color(Stdout, |t| t.bold()));
     println!();
     print_kv("dashboard", dashboard);
     print_forwarding(public_url, &format!("http://127.0.0.1:{port}"));
     print_kv("inspection", if inspect { "on" } else { "off" });
+    if password_protected {
+        print_kv("password", "required");
+    }
     println!();
     print_request_header();
 }
@@ -52,10 +61,8 @@ fn print_forwarding(public_url: &str, local: &str) {
 }
 
 fn print_request_header() {
-    let header = format!(
-        "{:<8}  {:<7}  {:<6}  {:>8}  {}",
-        "TIME", "METHOD", "STATUS", "DURATION", "PATH"
-    );
+    let header =
+        format!("{:<8}  {:<7}  {:<6}  {:>8}  {}", "TIME", "METHOD", "STATUS", "DURATION", "PATH");
     println!("  {}", header.if_supports_color(Stdout, |t| t.dimmed()));
 }
 

@@ -111,6 +111,7 @@ async fn ws_tunnel_end_to_end() {
         admin_hostname: None,
         admin_router: None,
         tcp_port_range: 29000..=29999,
+        cookie_key: axum_extra::extract::cookie::Key::generate(),
     };
 
     let edge_task = tokio::spawn(async move { start(cfg).await });
@@ -160,6 +161,7 @@ async fn ws_tunnel_end_to_end() {
             hostname: None,
             labels: vec![],
             inspect: false,
+            password: None,
         }),
     )
     .await

@@ -259,6 +259,7 @@ async fn run_dev(args: Args) -> anyhow::Result<()> {
         admin_hostname: None,
         admin_router: None,
         tcp_port_range: 29000..=29999,
+        cookie_key: axum_extra::extract::cookie::Key::generate(),
     };
     let edge_task = tokio::spawn(async move { start_edge(edge_cfg).await });
 
@@ -468,6 +469,7 @@ async fn run_from_config(path: &str) -> anyhow::Result<()> {
         admin_hostname: cfg.server.admin_hostname.clone(),
         admin_router: Some(admin_router),
         tcp_port_range: 29000..=29999,
+        cookie_key: axum_extra::extract::cookie::Key::generate(),
     };
 
     let edge_task = tokio::spawn(async move { start_edge(edge_cfg).await });

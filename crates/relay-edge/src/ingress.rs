@@ -7,10 +7,14 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use argon2::password_hash::PasswordHash;
+use argon2::{Argon2, PasswordVerifier};
 use axum::body::Body;
 use axum::extract::connect_info::Connected;
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode};
+use axum::response::IntoResponse;
+use axum_extra::extract::cookie::{Cookie, PrivateCookieJar, SameSite};
 use futures::StreamExt;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
@@ -21,7 +25,7 @@ use tower::Service;
 use uuid::Uuid;
 
 use crate::config::EdgeConfig;
-use crate::registry::TunnelRegistry;
+use crate::registry::{TunnelHandle, TunnelRegistry};
 
 /// Per-direction body cap for the inspector. See SPEC.md §9 / DECISIONS.md D12.
 const INSPECT_BODY_CAP: usize = 1024 * 1024;
@@ -163,6 +167,17 @@ async fn handle_inner(
         ));
     };
 
+    // Password gate for `--password`-protected tunnels. Either serves a login
+    // page / processes a POST, or hands the request back for normal proxying.
+    let req = if let Some(hash) = handle.password_hash.clone() {
+        match password_gate(&state, &handle, req, &hash).await? {
+            GateResult::Served(resp) => return Ok(resp),
+            GateResult::Proceed(req) => req,
+        }
+    } else {
+        req
+    };
+
     // WebSocket / HTTP Upgrade detection. Only HTTP/1.1 supports classical
     // upgrades; h2 would need RFC 8441 extended CONNECT, which we don't
     // implement (yet). Browsers default to h1 for WS handshakes anyway.
@@ -182,11 +197,7 @@ async fn handle_inner(
     // Default to "https" when the listener didn't tag the request (shouldn't
     // happen in practice, but picks the right behavior if the marker ever goes
     // missing — almost all real traffic is TLS-terminated at the edge).
-    let scheme = req
-        .extensions()
-        .get::<RequestScheme>()
-        .map(|s| s.0)
-        .unwrap_or("https");
+    let scheme = req.extensions().get::<RequestScheme>().map(|s| s.0).unwrap_or("https");
     inject_forwarded_headers(&mut req_headers, &host, scheme, &client_ip);
 
     let header = HttpRequestHeader {
@@ -574,6 +585,156 @@ async fn upgrade_path(
 
     Ok(resp)
 }
+
+// ---------------------------------------------------------------------------
+// Password gate (`--password`-protected tunnels)
+// ---------------------------------------------------------------------------
+
+const LOGIN_PATH: &str = "/__relay/login";
+const MAX_LOGIN_BODY: usize = 8 * 1024;
+const SESSION_TTL_SECS: i64 = 24 * 60 * 60;
+
+enum GateResult {
+    /// The gate handled the request (login page, form POST, or redirect).
+    Served(Response<Body>),
+    /// The caller has a valid session cookie; proxy this request normally.
+    Proceed(Request<Body>),
+}
+
+async fn password_gate(
+    state: &AppState,
+    handle: &TunnelHandle,
+    req: Request<Body>,
+    hash: &str,
+) -> anyhow::Result<GateResult> {
+    let path = req.uri().path().to_string();
+    let method = req.method().clone();
+    let cookie_name = tunnel_cookie_name(handle.tunnel_id);
+    let scheme = req.extensions().get::<RequestScheme>().map(|s| s.0).unwrap_or("https");
+    let is_https = scheme == "https";
+
+    // POST /__relay/login → verify password, set cookie, redirect to `next`.
+    if path == LOGIN_PATH && method == http::Method::POST {
+        let (parts, body) = req.into_parts();
+        let bytes = match axum::body::to_bytes(body, MAX_LOGIN_BODY).await {
+            Ok(b) => b,
+            Err(_) => {
+                return Ok(GateResult::Served(error_page(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "login form too large",
+                )));
+            }
+        };
+        let form: std::collections::HashMap<String, String> =
+            form_urlencoded::parse(&bytes).into_owned().collect();
+        let submitted = form.get("password").map(String::as_str).unwrap_or("");
+        let next = form
+            .get("next")
+            .filter(|n| is_safe_redirect(n))
+            .cloned()
+            .unwrap_or_else(|| "/".to_string());
+
+        let parsed = PasswordHash::new(hash).map_err(|e| anyhow::anyhow!("argon2 phc: {e}"))?;
+        let ok = Argon2::default().verify_password(submitted.as_bytes(), &parsed).is_ok();
+        if !ok {
+            return Ok(GateResult::Served(login_page(
+                &handle.hostname,
+                &next,
+                Some("Wrong password."),
+            )));
+        }
+
+        let expiry = time::OffsetDateTime::now_utc().unix_timestamp() + SESSION_TTL_SECS;
+        let value = format!("{}|{}", handle.tunnel_id.simple(), expiry);
+        let cookie = Cookie::build((cookie_name, value))
+            .path("/")
+            .http_only(true)
+            .same_site(SameSite::Lax)
+            .secure(is_https)
+            .max_age(time::Duration::seconds(SESSION_TTL_SECS))
+            .build();
+        let jar = PrivateCookieJar::from_headers(&parts.headers, state.cfg.cookie_key.clone())
+            .add(cookie);
+        return Ok(GateResult::Served((jar, axum::response::Redirect::to(&next)).into_response()));
+    }
+
+    // Any other request: valid signed cookie → proceed; otherwise show form.
+    let jar = PrivateCookieJar::from_headers(req.headers(), state.cfg.cookie_key.clone());
+    if let Some(c) = jar.get(&cookie_name) {
+        if cookie_is_valid(c.value(), handle.tunnel_id) {
+            return Ok(GateResult::Proceed(req));
+        }
+    }
+    let next = req.uri().path_and_query().map(|p| p.to_string()).unwrap_or_else(|| "/".into());
+    Ok(GateResult::Served(login_page(&handle.hostname, &next, None)))
+}
+
+fn tunnel_cookie_name(tunnel_id: Uuid) -> String {
+    format!("relay_tun_{}", tunnel_id.simple())
+}
+
+fn cookie_is_valid(value: &str, tunnel_id: Uuid) -> bool {
+    let mut parts = value.splitn(2, '|');
+    let Some(tid_hex) = parts.next() else { return false };
+    let Some(exp_str) = parts.next() else { return false };
+    if tid_hex != tunnel_id.simple().to_string() {
+        return false;
+    }
+    let Ok(exp) = exp_str.parse::<i64>() else { return false };
+    exp > time::OffsetDateTime::now_utc().unix_timestamp()
+}
+
+/// Guard against the login form being used as an open redirect, and avoid
+/// redirect loops back onto the login page itself. Accept only same-origin
+/// paths (leading `/`, not `//` which would be protocol-relative) that don't
+/// start with the reserved `/__relay/` prefix.
+fn is_safe_redirect(next: &str) -> bool {
+    next.starts_with('/') && !next.starts_with("//") && !next.starts_with("/__relay/")
+}
+
+fn login_page(host: &str, next: &str, error: Option<&str>) -> Response<Body> {
+    let error_html = error
+        .map(|e| format!(r#"<p class="err" role="alert">{}</p>"#, html_escape(e)))
+        .unwrap_or_default();
+    let html = format!(
+        r#"<!doctype html><html><head><meta charset="utf-8"><title>password required — relay</title>
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>:root{{--fg:#222;--bg:#fff;--muted:#666;--border:#ddd;--accent:#2a5db0;--err-fg:#a80000;--err-bg:#fde8e8}}
+@media (prefers-color-scheme: dark){{:root{{--fg:#e6e6e6;--bg:#111;--muted:#888;--border:#333;--accent:#7aa7e0;--err-fg:#ffb3b3;--err-bg:#3a1414}}}}
+html,body{{background:var(--bg);color:var(--fg)}}
+body{{font-family:system-ui;max-width:22rem;margin:6rem auto;padding:0 1rem}}
+h1{{font-size:1.2rem;margin:0 0 .25rem}}
+.host{{color:var(--muted);font-size:.85rem;margin:0;word-break:break-all}}
+form{{margin-top:1.5rem;display:flex;flex-direction:column;gap:.75rem}}
+input[type=password]{{font:inherit;padding:.55rem .7rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg)}}
+button{{font:inherit;padding:.55rem .9rem;border:0;border-radius:6px;background:var(--accent);color:#fff;cursor:pointer}}
+button:hover{{filter:brightness(1.05)}}
+.err{{color:var(--err-fg);background:var(--err-bg);padding:.55rem .7rem;border-radius:6px;font-size:.9rem;margin:0}}
+</style></head>
+<body><h1>Password required</h1>
+<p class="host">{host}</p>
+{error_html}<form method="POST" action="{login_path}">
+<input type="password" name="password" autofocus required>
+<input type="hidden" name="next" value="{next}">
+<button type="submit">Unlock</button>
+</form></body></html>"#,
+        host = html_escape(host),
+        next = html_escape(next),
+        error_html = error_html,
+        login_path = LOGIN_PATH,
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .header("cache-control", "no-store")
+        .body(Body::from(html))
+        .expect("login page")
+}
+
+// ---------------------------------------------------------------------------
+// Static error + landing pages
+// ---------------------------------------------------------------------------
 
 fn error_page(status: StatusCode, msg: &str) -> Response<Body> {
     // `color-scheme: light dark` flips UA defaults (form controls, scrollbars)

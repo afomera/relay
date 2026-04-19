@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum_extra::extract::cookie::Key as CookieKey;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::ResolvesServerCert;
 
@@ -61,4 +62,9 @@ pub struct EdgeConfig {
     /// Optional TCP tunnel port pool. Each TCP tunnel allocates a port from
     /// this range; the edge binds a listener per tunnel.
     pub tcp_port_range: std::ops::RangeInclusive<u16>,
+
+    /// Key used to sign `--password` session cookies on gated tunnels.
+    /// Generated fresh per edge process; sessions don't survive a restart,
+    /// which is acceptable for a feature that's already ephemeral.
+    pub cookie_key: CookieKey,
 }

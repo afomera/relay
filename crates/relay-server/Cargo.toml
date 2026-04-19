@@ -20,6 +20,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
 axum.workspace = true
+axum-extra.workspace = true
 base64.workspace = true
 rand.workspace = true
 relay-edge = { path = "../relay-edge" }

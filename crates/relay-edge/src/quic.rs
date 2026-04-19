@@ -3,6 +3,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use argon2::Argon2;
+use argon2::password_hash::{PasswordHasher, SaltString};
 use relay_proto::{
     ALPN, ClientMsg, Feature, PROTOCOL_VERSION, ServerHello, ServerMsg, TunnelKind,
     TunnelRegistered, TunnelRejected,
@@ -225,6 +227,15 @@ async fn handle_register(
         }
     };
 
+    let password_hash = match hash_password(req.password.as_deref()) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!(?e, "failed to hash tunnel password");
+            reject(send, req.req_id, "password hashing failed".into()).await?;
+            return Ok(());
+        }
+    };
+
     let handle = TunnelHandle {
         tunnel_id,
         org_id: principal.org_id,
@@ -233,6 +244,7 @@ async fn handle_register(
         conn: conn.clone(),
         inspect: req.inspect,
         tcp_port: None,
+        password_hash,
     };
 
     if reg.insert(handle).is_err() {
@@ -303,6 +315,7 @@ async fn handle_tcp_register(
         conn: conn.clone(),
         inspect: false,
         tcp_port: Some(port),
+        password_hash: None,
     };
     if reg.insert(handle).is_err() {
         pool.release(port);
@@ -331,4 +344,17 @@ async fn handle_tcp_register(
     )
     .await?;
     Ok(())
+}
+
+fn hash_password(pw: Option<&str>) -> anyhow::Result<Option<String>> {
+    let Some(pw) = pw else { return Ok(None) };
+    if pw.is_empty() {
+        return Ok(None);
+    }
+    let salt = SaltString::generate(&mut rand::thread_rng());
+    let phc = Argon2::default()
+        .hash_password(pw.as_bytes(), &salt)
+        .map_err(|e| anyhow::anyhow!("argon2: {e}"))?
+        .to_string();
+    Ok(Some(phc))
 }

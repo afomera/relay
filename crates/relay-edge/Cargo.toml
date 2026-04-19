@@ -34,6 +34,9 @@ serde.workspace = true
 uuid.workspace = true
 rand.workspace = true
 time.workspace = true
+argon2.workspace = true
+axum-extra.workspace = true
+form_urlencoded = "1"
 relay-proto = { path = "../relay-proto" }
 relay-acme = { path = "../relay-acme" }
 

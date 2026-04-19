@@ -66,6 +66,13 @@ pub struct RegisterTunnel {
     pub labels: Vec<(String, String)>,
     /// Inspection requested by the CLI. Server may refuse for non-HTTP kinds.
     pub inspect: bool,
+    /// Optional plaintext password gating public access to this tunnel. The
+    /// server argon2-hashes it on receipt and holds the hash in memory for the
+    /// life of the connection only — never written to a database. `None` (the
+    /// default, including for older CLIs that don't know about this field)
+    /// leaves the tunnel public.
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

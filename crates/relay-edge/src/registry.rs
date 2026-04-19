@@ -18,6 +18,10 @@ pub struct TunnelHandle {
     pub inspect: bool,
     /// For TCP tunnels: the public port this tunnel is bound to.
     pub tcp_port: Option<u16>,
+    /// Argon2 PHC string for `--password`-gated HTTP tunnels. `None` means the
+    /// tunnel is public. Lives only in memory for the duration of the QUIC
+    /// connection — never persisted.
+    pub password_hash: Option<String>,
 }
 
 #[derive(Default)]
