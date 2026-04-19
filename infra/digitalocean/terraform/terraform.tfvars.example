@@ -55,6 +55,14 @@ acme_contact_email         = "you@example.com"
 # Start on staging; flip to the prod URL once a staging cert issues cleanly.
 # acme_directory = "https://acme-v02.api.letsencrypt.org/directory"
 
+# Subdomain Relay uses for ACME DNS-01 delegation when issuing certs for
+# customers' wildcard custom domains. Customers CNAME
+# `_acme-challenge.<their-domain>` here once and renewals run unattended.
+# Must live under the same Cloudflare zone as tunnel_zone_id (the DNS
+# provider is single-zone today). Leave empty to disable wildcard custom
+# domains.
+# acme_delegation_zone = "acme-delegate.sharedwithrelay.com"
+
 # Leave blank to let Terraform generate a random 32-byte key. Set a fixed
 # value only when migrating a cert store between droplets.
 # relay_data_key = ""

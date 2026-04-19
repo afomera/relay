@@ -127,6 +127,12 @@ variable "acme_directory" {
   default     = "https://acme-staging-v02.api.letsencrypt.org/directory"
 }
 
+variable "acme_delegation_zone" {
+  description = "Subdomain Relay uses for ACME DNS-01 delegation when issuing certs for customers' wildcard custom domains. Customers CNAME `_acme-challenge.<their-domain>` to `<slug>.<this-zone>` once, and renewals run unattended. Must live under the same Cloudflare zone as tunnel_zone_id — the DNS provider is single-zone today. Example: \"acme-delegate.sharedwithrelay.com\". Leave empty to disable wildcard custom domains."
+  type        = string
+  default     = ""
+}
+
 variable "relay_data_key" {
   description = "32-byte base64 data key. Leave empty to auto-generate."
   type        = string

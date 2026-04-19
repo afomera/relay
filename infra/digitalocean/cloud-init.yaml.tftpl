@@ -1,7 +1,7 @@
 #cloud-config
 # Bootstrap for a relay droplet on DigitalOcean. Invoked once on first
 # boot by cloud-init; the Terraform module renders template variables
-# like ${admin_hostname} inline.
+# inline (see main.tf for the full var map).
 #
 # After this runs:
 #   - `relay` user exists, owns /home/relay/relay, in the docker group
@@ -74,56 +74,14 @@ write_files:
       # --- Clone relay.
       sudo -u relay git clone --depth 1 --branch ${relay_git_ref} ${relay_git_url} /home/relay/relay
 
-      # --- Write relayd.toml. Heredoc is single-quoted so bash doesn't
-      # expand anything; values come from Terraform's templatefile() above.
+      # --- Write relayd.toml. The content is rendered by terraform once
+      # and stitched in verbatim below — see local.relayd_toml in main.tf.
+      # `make update-config` re-renders the same template against the live
+      # tfvars and ships the new file to the droplet without recreating it.
+      # `indent(6, ...)` keeps subsequent lines at the YAML block's base
+      # indent (6 spaces here) so the `content: |` scalar parses cleanly.
       cat > /home/relay/relay/infra/docker/relayd.toml <<'TOML_EOF'
-      [server]
-      bind_http      = "0.0.0.0:80"
-      bind_https     = "0.0.0.0:443"
-      bind_quic      = "0.0.0.0:443"
-      bind_admin     = "127.0.0.1:7090"
-      admin_hostname = "${admin_hostname}"
-      public_url     = "https://${admin_hostname}"
-      tunnel_scheme  = "https"
-
-      [domains]
-      base      = "${tunnel_base_domain}"
-      temporary = "temporary.${tunnel_base_domain}"
-%{ if marketing_url != "" ~}
-      marketing_url = "${marketing_url}"
-%{ endif ~}
-
-      [db]
-%{ if database_url != "" ~}
-      url_env = "DATABASE_URL"
-%{ else ~}
-      url = "sqlite:///var/lib/relay/relay.db"
-%{ endif ~}
-%{ if db_max_connections != null ~}
-      max_connections = ${db_max_connections}
-%{ endif ~}
-%{ if db_acquire_timeout_secs != null ~}
-      acquire_timeout_secs = ${db_acquire_timeout_secs}
-%{ endif ~}
-
-      [github_oauth]
-      client_id         = "${github_oauth_client_id}"
-      client_secret_env = "GITHUB_OAUTH_SECRET"
-      allowed_orgs      = ${github_allowed_orgs_toml}
-
-      [security]
-      data_key_env = "RELAY_DATA_KEY"
-
-      [dns]
-      provider = "cloudflare"
-
-      [dns.cloudflare]
-      api_token_env = "CLOUDFLARE_API_TOKEN"
-      zone_id       = "${tunnel_zone_id}"
-
-      [acme]
-      directory     = "${acme_directory}"
-      contact_email = "${acme_contact_email}"
+      ${indent(6, relayd_toml)}
       TOML_EOF
 
       # --- .env for docker-compose. Mode 0600.

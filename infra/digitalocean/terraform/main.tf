@@ -12,6 +12,24 @@ locals {
   // accepts `dash.withrelay.dev` when zone_id is withrelay.dev's - but
   // passing short names keeps plans diff-clean.)
   cf_admin_record = var.admin_hostname
+
+  // Render relayd.toml once so both cloud-init (on droplet creation) and
+  // the local_file resource (for `make update-config` on a running droplet)
+  // emit identical bytes.
+  relayd_toml = templatefile("${path.module}/../relayd.toml.tftpl", {
+    admin_hostname           = var.admin_hostname
+    tunnel_base_domain       = var.tunnel_base_domain
+    marketing_url            = var.marketing_url
+    database_url             = var.database_url
+    db_max_connections       = var.db_max_connections
+    db_acquire_timeout_secs  = var.db_acquire_timeout_secs
+    github_oauth_client_id   = var.github_oauth_client_id
+    github_allowed_orgs_toml = jsonencode(var.github_allowed_orgs)
+    tunnel_zone_id           = var.tunnel_zone_id
+    acme_directory           = var.acme_directory
+    acme_contact_email       = var.acme_contact_email
+    acme_delegation_zone     = var.acme_delegation_zone
+  })
 }
 
 // ---- Infra -----------------------------------------------------------------
@@ -29,23 +47,33 @@ resource "digitalocean_droplet" "relay" {
   ipv6     = true
 
   user_data = templatefile("${path.module}/../cloud-init.yaml.tftpl", {
+    relayd_toml                = local.relayd_toml
     data_key_b64               = local.data_key_b64
-    github_oauth_client_id     = var.github_oauth_client_id
     github_oauth_client_secret = var.github_oauth_client_secret
-    github_allowed_orgs_toml   = jsonencode(var.github_allowed_orgs) // TOML accepts JSON-style arrays
     cloudflare_api_token       = var.cloudflare_api_token
-    acme_contact_email         = var.acme_contact_email
-    acme_directory             = var.acme_directory
-    tunnel_base_domain         = var.tunnel_base_domain
-    tunnel_zone_id             = var.tunnel_zone_id
-    marketing_url              = var.marketing_url
-    admin_hostname             = var.admin_hostname
+    database_url               = var.database_url
     relay_git_url              = var.relay_git_url
     relay_git_ref              = var.relay_git_ref
-    database_url               = var.database_url
-    db_max_connections         = var.db_max_connections
-    db_acquire_timeout_secs    = var.db_acquire_timeout_secs
   })
+
+  // `user_data` is ForceNew on DO droplets — changing it would destroy and
+  // recreate the VM. Config-only tfvar changes ship via `make update-config`
+  // (which apply-targets `local_file.relayd_toml` and rsyncs it onto the
+  // running droplet), so we deliberately ignore user_data drift here. To
+  // pick up bootstrap-level changes (docker image, cloud-init logic),
+  // `terraform taint digitalocean_droplet.relay` and re-apply.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+}
+
+// Rendered relayd.toml written to disk so `make update-config` can scp it
+// onto the live droplet without recreating the VM. `terraform apply
+// -target=local_file.relayd_toml` re-renders from the current tfvars.
+resource "local_file" "relayd_toml" {
+  content         = local.relayd_toml
+  filename        = "${path.module}/build/relayd.toml"
+  file_permission = "0644"
 }
 
 resource "digitalocean_reserved_ip_assignment" "relay" {

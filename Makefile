@@ -125,6 +125,15 @@ update: guard-host   ## git pull + rebuild relay on the droplet; REF=<ref> to pi
 	@echo "updating $(DROPLET_HOST) to ref=$(REF)"
 	DROPLET_HOST=$(DROPLET_HOST) $(DO_DIR)/remote-update.sh $(REF)
 
+update-config: guard-host   ## re-render relayd.toml from tfvars, ship it, restart relayd
+	@echo "rendering relayd.toml from $(DO_TF_DIR)"
+	cd $(DO_TF_DIR) && terraform apply -target=local_file.relayd_toml -auto-approve >/dev/null
+	@echo "shipping to $(DROPLET_HOST):/home/relay/relay/infra/docker/relayd.toml"
+	scp -q $(DO_TF_DIR)/build/relayd.toml $(DROPLET_HOST):/home/relay/relay/infra/docker/relayd.toml
+	@echo "restarting relayd"
+	ssh $(DROPLET_HOST) -- '$(COMPOSE_ON_DROPLET) restart relayd'
+	@echo "done. tail logs: make logs"
+
 logs: guard-host     ## tail relayd logs (ctrl-c to stop)
 	ssh $(DROPLET_HOST) -- '$(COMPOSE_ON_DROPLET) logs -f --tail=100 relayd'
 
