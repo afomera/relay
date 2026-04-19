@@ -15,8 +15,18 @@
 
   <div class="card">
     <h2>request headers</h2>
-    <pre class="header-block">{% for (k, v) in req_headers %}<span class="header-name">{{ k }}</span><span class="header-sep">:</span> <span class="header-value">{{ v }}</span>
-{% endfor %}</pre>
+    {% if req_headers.is_empty() %}
+      <p class="muted">none</p>
+    {% else %}
+      <table class="kv-table">
+        <thead><tr><th>name</th><th>value</th></tr></thead>
+        <tbody>
+          {% for (k, v) in req_headers %}
+          <tr><td class="kv-key">{{ k }}</td><td class="kv-value">{{ v }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
   </div>
 
   <div class="card">
@@ -42,8 +52,18 @@
 
   <div class="card">
     <h2>response headers</h2>
-    <pre class="header-block">{% for (k, v) in resp_headers %}<span class="header-name">{{ k }}</span><span class="header-sep">:</span> <span class="header-value">{{ v }}</span>
-{% endfor %}</pre>
+    {% if resp_headers.is_empty() %}
+      <p class="muted">none</p>
+    {% else %}
+      <table class="kv-table">
+        <thead><tr><th>name</th><th>value</th></tr></thead>
+        <tbody>
+          {% for (k, v) in resp_headers %}
+          <tr><td class="kv-key">{{ k }}</td><td class="kv-value">{{ v }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
   </div>
 
   <div class="card">
