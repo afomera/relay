@@ -55,7 +55,9 @@ impl CertStore for DbCertStore {
                 Ok(ck) => {
                     self.cache.insert(row.hostname.clone(), Arc::new(ck));
                 }
-                Err(e) => tracing::warn!(e = %format!("{e:#}"), host = %row.hostname, "cert load failed"),
+                Err(e) => {
+                    tracing::warn!(e = %format!("{e:#}"), host = %row.hostname, "cert load failed")
+                }
             }
         }
         // Evict entries that vanished from the DB.

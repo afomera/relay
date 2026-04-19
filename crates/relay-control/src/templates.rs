@@ -131,11 +131,18 @@ pub struct CapturePanelPartial {
 #[derive(Debug, Clone)]
 pub enum RenderedBody {
     Empty,
-    Text { text: String, language: &'static str },
+    Text {
+        text: String,
+        language: &'static str,
+    },
     /// Parsed `application/x-www-form-urlencoded` body: percent-decoded
     /// key/value pairs ready to render as a table.
-    FormParams { params: Vec<(String, String)> },
-    Binary { bytes: usize },
+    FormParams {
+        params: Vec<(String, String)>,
+    },
+    Binary {
+        bytes: usize,
+    },
 }
 
 pub fn classify_body(headers: &[(String, String)], body: &[u8]) -> RenderedBody {
