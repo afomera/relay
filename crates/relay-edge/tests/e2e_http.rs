@@ -156,7 +156,7 @@ async fn http_tunnel_end_to_end() {
     tracing::info!(%hostname, "tunnel registered");
 
     // Spawn the CLI-side forwarder loop.
-    tokio::spawn(relay_cli::client::accept_and_proxy(conn.clone(), local_port));
+    tokio::spawn(relay_cli::client::accept_and_proxy(conn.clone(), local_port, None));
 
     // Give the registrar + forwarder a moment to settle.
     tokio::time::sleep(Duration::from_millis(50)).await;

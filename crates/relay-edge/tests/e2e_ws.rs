@@ -55,22 +55,17 @@ async fn start_ws_echo_server(port: u16) {
                         Ok(m) => m,
                         Err(_) => break,
                     };
-                    match msg {
-                        Message::Text(s) => {
-                            if tx.send(Message::Text(format!("echo: {s}"))).await.is_err() {
-                                break;
-                            }
-                        }
-                        Message::Binary(b) => {
-                            if tx.send(Message::Binary(b)).await.is_err() {
-                                break;
-                            }
-                        }
+                    let send_res = match msg {
+                        Message::Text(s) => tx.send(Message::Text(format!("echo: {s}"))).await,
+                        Message::Binary(b) => tx.send(Message::Binary(b)).await,
                         Message::Close(c) => {
                             let _ = tx.send(Message::Close(c)).await;
                             break;
                         }
-                        _ => {}
+                        _ => continue,
+                    };
+                    if send_res.is_err() {
+                        break;
                     }
                 }
             });
@@ -175,7 +170,7 @@ async fn ws_tunnel_end_to_end() {
     };
     let hostname = public_url.strip_prefix("http://").expect("url starts with http").to_string();
 
-    tokio::spawn(relay_cli::client::accept_and_proxy(conn.clone(), local_port));
+    tokio::spawn(relay_cli::client::accept_and_proxy(conn.clone(), local_port, None));
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Build a WS request pointed at 127.0.0.1:<http_port> but with the

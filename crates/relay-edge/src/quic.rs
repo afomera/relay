@@ -5,11 +5,11 @@ use std::time::Duration;
 
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHasher, SaltString};
-use sha2::{Digest, Sha256};
 use relay_proto::{
     ALPN, ClientMsg, Feature, PROTOCOL_VERSION, ServerHello, ServerMsg, TunnelKind,
     TunnelRegistered, TunnelRejected,
 };
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::auth::Principal;
