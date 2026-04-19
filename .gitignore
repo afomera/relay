@@ -42,3 +42,6 @@ package-lock.json
 
 # release backups dropped by `make backup`
 /relay-backup-*.db
+
+# env
+.env*
