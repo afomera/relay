@@ -7,8 +7,6 @@
 #
 # Start: `docker compose up -d`
 
-version: "3.9"
-
 services:
   relayd:
     build:
