@@ -10,9 +10,13 @@ use tokio::sync::mpsc::UnboundedSender;
 
 /// Where the CLI sends incoming tunnel traffic on this machine.
 ///
+/// `addr` defaults to `127.0.0.1`. Override via `--local-addr` for setups
+/// that bind only to `::1`, a non-loopback interface, or want OS-level v4/v6
+/// fallback via `localhost`.
+///
 /// `host_header` is for puma-dev-style local setups that route by Host name
 /// (e.g. `admin.sample.test` → a Rails app on some ephemeral port). When set,
-/// we still dial `127.0.0.1:port` but write `Host: <host_header>` on the
+/// we still dial `<addr>:port` but write `Host: <host_header>` on the
 /// outbound request so the local reverse-proxy can route it.
 ///
 /// `host_header` may contain a single `*` in the leading label — that's a
@@ -22,17 +26,25 @@ use tokio::sync::mpsc::UnboundedSender;
 /// `foo.acme.sharedwithrelay.com` → local `Host: foo.sample.test`.
 #[derive(Clone, Debug)]
 pub struct LocalTarget {
+    pub addr: String,
     pub port: u16,
     pub host_header: Option<String>,
 }
 
 impl LocalTarget {
     pub fn port(port: u16) -> Self {
-        Self { port, host_header: None }
+        Self { addr: "127.0.0.1".into(), port, host_header: None }
     }
 
     pub fn with_host(port: u16, host_header: String) -> Self {
-        Self { port, host_header: Some(host_header) }
+        Self { addr: "127.0.0.1".into(), port, host_header: Some(host_header) }
+    }
+
+    /// Override the dial address (default `127.0.0.1`). Returns self for
+    /// fluent construction.
+    pub fn with_addr(mut self, addr: String) -> Self {
+        self.addr = addr;
+        self
     }
 }
 
@@ -105,7 +117,7 @@ async fn handle_stream(
             proxy_http_upgrade(send, recv, hdr, &target).await
         }
         StreamOpen::Http(hdr) => proxy_http(send, recv, hdr, &target, http_client, events).await,
-        StreamOpen::Tcp(hdr) => proxy_tcp(send, recv, hdr, target.port).await,
+        StreamOpen::Tcp(hdr) => proxy_tcp(send, recv, hdr, &target).await,
     }
 }
 
@@ -130,10 +142,10 @@ async fn proxy_tcp(
     mut send: quinn::SendStream,
     mut recv: quinn::RecvStream,
     hdr: TcpConnectHeader,
-    local_port: u16,
+    target: &LocalTarget,
 ) -> anyhow::Result<()> {
     tracing::debug!(connection_id = ?hdr.connection_id, "tcp connection from edge");
-    let mut tcp = match TcpStream::connect(("127.0.0.1", local_port)).await {
+    let mut tcp = match TcpStream::connect((target.addr.as_str(), target.port)).await {
         Ok(t) => t,
         Err(e) => {
             tracing::warn!(e = %format!("{e:#}"), "failed to reach local tcp service");
@@ -190,7 +202,7 @@ async fn proxy_http(
     let method_str = hdr.method.clone();
     let path_str = hdr.path.clone();
 
-    let url = format!("http://127.0.0.1:{}{}", target.port, hdr.path);
+    let url = format!("http://{}:{}{}", target.addr, target.port, hdr.path);
     let method = reqwest::Method::from_bytes(hdr.method.as_bytes())?;
     let mut req = http_client.request(method, &url);
 
@@ -225,8 +237,11 @@ async fn proxy_http(
             };
             relay_proto::write_frame(&mut send, &header).await?;
             send.write_all(
-                format!("relay cli could not reach local service on :{}: {e}", target.port)
-                    .as_bytes(),
+                format!(
+                    "relay cli could not reach local service on {}:{}: {e}",
+                    target.addr, target.port
+                )
+                .as_bytes(),
             )
             .await?;
             let _ = send.finish();
@@ -285,7 +300,7 @@ async fn proxy_http_upgrade(
     hdr: HttpRequestHeader,
     target: &LocalTarget,
 ) -> anyhow::Result<()> {
-    let mut tcp = match TcpStream::connect(("127.0.0.1", target.port)).await {
+    let mut tcp = match TcpStream::connect((target.addr.as_str(), target.port)).await {
         Ok(t) => t,
         Err(e) => {
             let header = HttpResponseHeader {
@@ -295,8 +310,11 @@ async fn proxy_http_upgrade(
             };
             relay_proto::write_frame(&mut send, &header).await?;
             send.write_all(
-                format!("relay cli could not reach local service on :{}: {e}", target.port)
-                    .as_bytes(),
+                format!(
+                    "relay cli could not reach local service on {}:{}: {e}",
+                    target.addr, target.port
+                )
+                .as_bytes(),
             )
             .await?;
             let _ = send.finish();
@@ -307,10 +325,10 @@ async fn proxy_http_upgrade(
     // Host value to write to the local socket. With `share` the user wants a
     // specific name (puma-dev routing), possibly with `*` substitution from
     // the incoming Host. Otherwise the tunneled Host wouldn't match the local
-    // dev server's expectations, so fall back to loopback.
+    // dev server's expectations, so fall back to the dial target.
     let host_line = match &target.host_header {
         Some(pattern) => resolve_host_header(pattern, incoming_host_value(&hdr)),
-        None => format!("127.0.0.1:{}", target.port),
+        None => format!("{}:{}", target.addr, target.port),
     };
 
     let mut req_bytes = Vec::with_capacity(512);

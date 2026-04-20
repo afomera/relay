@@ -62,6 +62,10 @@ enum Command {
         hostname: Option<String>,
         #[arg(long)]
         domain: Option<String>,
+        /// Local address to dial. Defaults to `127.0.0.1`. Pass `localhost`
+        /// for OS-level v4/v6 fallback, or a specific interface/IP.
+        #[arg(long, default_value = "127.0.0.1")]
+        local_addr: String,
         /// Disable request inspection (default: on).
         #[arg(long)]
         no_inspect: bool,
@@ -88,6 +92,10 @@ enum Command {
         /// Local port to dial. Defaults to 80 (the puma-dev default).
         #[arg(long, default_value_t = 80)]
         port: u16,
+        /// Local address to dial. Defaults to `127.0.0.1`. Pass `localhost`
+        /// for OS-level v4/v6 fallback, or a specific interface/IP.
+        #[arg(long, default_value = "127.0.0.1")]
+        local_addr: String,
         #[arg(long)]
         hostname: Option<String>,
         #[arg(long)]
@@ -105,7 +113,12 @@ enum Command {
     },
 
     /// Open a raw TCP tunnel to a local port.
-    Tcp { port: u16 },
+    Tcp {
+        port: u16,
+        /// Local address to dial. Defaults to `127.0.0.1`.
+        #[arg(long, default_value = "127.0.0.1")]
+        local_addr: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -153,10 +166,18 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Auth(sub) => commands::auth::run(sub, cfg).await,
-        Command::Http { port, hostname, domain, no_inspect, no_reconnect, password } => {
+        Command::Http {
+            port,
+            hostname,
+            domain,
+            local_addr,
+            no_inspect,
+            no_reconnect,
+            password,
+        } => {
             commands::http::run(
                 runtime,
-                relay_cli::client::LocalTarget::port(port),
+                relay_cli::client::LocalTarget::port(port).with_addr(local_addr),
                 hostname,
                 domain,
                 !no_inspect,
@@ -168,6 +189,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Share {
             local_host,
             port,
+            local_addr,
             hostname,
             domain,
             no_inspect,
@@ -178,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
             warn_on_share_wildcard_mismatch(&local_host, hostname.as_deref(), domain.as_deref());
             commands::http::run(
                 runtime,
-                relay_cli::client::LocalTarget::with_host(port, local_host),
+                relay_cli::client::LocalTarget::with_host(port, local_host).with_addr(local_addr),
                 hostname,
                 domain,
                 !no_inspect,
@@ -187,7 +209,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        Command::Tcp { port } => commands::tcp::run(runtime, port).await,
+        Command::Tcp { port, local_addr } => commands::tcp::run(runtime, local_addr, port).await,
     }
 }
 

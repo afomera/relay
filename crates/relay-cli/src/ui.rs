@@ -33,12 +33,12 @@ pub fn print_http_banner(
     print_request_header();
 }
 
-pub fn print_tcp_banner(dashboard: &str, public_url: &str, port: u16) {
+pub fn print_tcp_banner(dashboard: &str, public_url: &str, local: &str) {
     println!();
     println!("  {}", "relay tcp tunnel established".if_supports_color(Stdout, |t| t.bold()));
     println!();
     print_kv("dashboard", dashboard);
-    print_forwarding(public_url, &format!("127.0.0.1:{port}"));
+    print_forwarding(public_url, local);
     println!();
 }
 

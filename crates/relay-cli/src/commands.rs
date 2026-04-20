@@ -433,8 +433,8 @@ pub mod http {
 
         let dashboard = relay_cli::dashboard_url_from(&ctx.server);
         let local_display = match &target.host_header {
-            Some(h) => format!("http://{h} (via 127.0.0.1:{})", target.port),
-            None => format!("http://127.0.0.1:{}", target.port),
+            Some(h) => format!("http://{h} (via {}:{})", target.addr, target.port),
+            None => format!("http://{}:{}", target.addr, target.port),
         };
         ui::print_http_banner(&dashboard, &public_url, &local_display, inspect, password.is_some());
 
@@ -519,7 +519,7 @@ pub mod tcp {
     use relay_cli::client::LocalTarget;
     use relay_cli::{client, tls, ui};
 
-    pub async fn run(ctx: RuntimeCtx, port: u16) -> anyhow::Result<()> {
+    pub async fn run(ctx: RuntimeCtx, addr: String, port: u16) -> anyhow::Result<()> {
         if ctx.token.is_empty() {
             anyhow::bail!("not signed in — run `relay auth login` (or pass --token)");
         }
@@ -575,7 +575,7 @@ pub mod tcp {
         };
 
         let dashboard = relay_cli::dashboard_url_from(&ctx.server);
-        ui::print_tcp_banner(&dashboard, &public_url, port);
+        ui::print_tcp_banner(&dashboard, &public_url, &format!("{addr}:{port}"));
 
         let send = Arc::new(Mutex::new(send));
         let send_for_pump = send.clone();
@@ -599,7 +599,7 @@ pub mod tcp {
 
         let proxy_conn = conn.clone();
         tokio::select! {
-            res = client::accept_and_proxy(proxy_conn, LocalTarget::port(port), None) => res,
+            res = client::accept_and_proxy(proxy_conn, LocalTarget::port(port).with_addr(addr), None) => res,
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("\nshutting down…");
                 conn.close(0u32.into(), b"cli ctrl-c");
