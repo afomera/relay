@@ -253,6 +253,7 @@ pub mod http {
     use uuid::Uuid;
 
     use super::RuntimeCtx;
+    use relay_cli::client::LocalTarget;
     use relay_cli::ui::{self, ReqEvent};
     use relay_cli::{client, tls};
 
@@ -268,7 +269,7 @@ pub mod http {
 
     pub async fn run(
         ctx: RuntimeCtx,
-        port: u16,
+        target: LocalTarget,
         hostname: Option<String>,
         domain: Option<String>,
         inspect: bool,
@@ -301,7 +302,15 @@ pub mod http {
         ui::spawn_request_printer(rx);
 
         loop {
-            match session(&ctx, port, desired.clone(), inspect, password.clone(), tx.clone()).await
+            match session(
+                &ctx,
+                target.clone(),
+                desired.clone(),
+                inspect,
+                password.clone(),
+                tx.clone(),
+            )
+            .await
             {
                 Ok((Outcome::Fatal(e), _)) => return Err(e),
                 Ok((Outcome::CtrlC, _)) => return Ok(()),
@@ -334,7 +343,7 @@ pub mod http {
 
     async fn session(
         ctx: &RuntimeCtx,
-        port: u16,
+        target: LocalTarget,
         desired: Option<String>,
         inspect: bool,
         password: Option<String>,
@@ -423,7 +432,11 @@ pub mod http {
         let assigned_hostname = strip_url(&public_url);
 
         let dashboard = relay_cli::dashboard_url_from(&ctx.server);
-        ui::print_http_banner(&dashboard, &public_url, port, inspect, password.is_some());
+        let local_display = match &target.host_header {
+            Some(h) => format!("http://{h} (via 127.0.0.1:{})", target.port),
+            None => format!("http://127.0.0.1:{}", target.port),
+        };
+        ui::print_http_banner(&dashboard, &public_url, &local_display, inspect, password.is_some());
 
         let send = Arc::new(Mutex::new(send));
         let send_for_pump = send.clone();
@@ -447,7 +460,7 @@ pub mod http {
 
         let proxy_conn = conn.clone();
         let outcome = tokio::select! {
-            _ = client::accept_and_proxy(proxy_conn, port, Some(events)) => Outcome::Disconnected,
+            _ = client::accept_and_proxy(proxy_conn, target.clone(), Some(events)) => Outcome::Disconnected,
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("\nshutting down…");
                 conn.close(0u32.into(), b"cli ctrl-c");
@@ -503,6 +516,7 @@ pub mod tcp {
 
     use super::RuntimeCtx;
     use super::http::FirstAddr;
+    use relay_cli::client::LocalTarget;
     use relay_cli::{client, tls, ui};
 
     pub async fn run(ctx: RuntimeCtx, port: u16) -> anyhow::Result<()> {
@@ -585,7 +599,7 @@ pub mod tcp {
 
         let proxy_conn = conn.clone();
         tokio::select! {
-            res = client::accept_and_proxy(proxy_conn, port, None) => res,
+            res = client::accept_and_proxy(proxy_conn, LocalTarget::port(port), None) => res,
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("\nshutting down…");
                 conn.close(0u32.into(), b"cli ctrl-c");

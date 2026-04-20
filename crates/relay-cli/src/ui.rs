@@ -16,7 +16,7 @@ pub struct ReqEvent {
 pub fn print_http_banner(
     dashboard: &str,
     public_url: &str,
-    port: u16,
+    local: &str,
     inspect: bool,
     password_protected: bool,
 ) {
@@ -24,7 +24,7 @@ pub fn print_http_banner(
     println!("  {}", "relay tunnel established".if_supports_color(Stdout, |t| t.bold()));
     println!();
     print_kv("dashboard", dashboard);
-    print_forwarding(public_url, &format!("http://127.0.0.1:{port}"));
+    print_forwarding(public_url, local);
     print_kv("inspection", if inspect { "on" } else { "off" });
     if password_protected {
         print_kv("password", "required");

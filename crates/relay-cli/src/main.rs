@@ -76,6 +76,34 @@ enum Command {
         password: Option<String>,
     },
 
+    /// Share a puma-dev-style local domain through a tunnel.
+    ///
+    /// The CLI dials `127.0.0.1:<port>` (port 80 by default, i.e. the puma-dev
+    /// front door) and writes `Host: <local_host>` on each outbound request so
+    /// the local reverse-proxy can route by name. Use this when your app
+    /// listens on a hostname like `admin.sample.test` rather than a raw port.
+    Share {
+        /// Local Host header value (e.g. `admin.sample.test`).
+        local_host: String,
+        /// Local port to dial. Defaults to 80 (the puma-dev default).
+        #[arg(long, default_value_t = 80)]
+        port: u16,
+        #[arg(long)]
+        hostname: Option<String>,
+        #[arg(long)]
+        domain: Option<String>,
+        /// Disable request inspection (default: on).
+        #[arg(long)]
+        no_inspect: bool,
+        /// Exit on the first disconnect instead of reconnecting with backoff.
+        #[arg(long)]
+        no_reconnect: bool,
+        /// Require visitors to enter this password before the tunnel proxies
+        /// their request. See `relay http --help` for semantics.
+        #[arg(long)]
+        password: Option<String>,
+    },
+
     /// Open a raw TCP tunnel to a local port.
     Tcp { port: u16 },
 }
@@ -128,7 +156,27 @@ async fn main() -> anyhow::Result<()> {
         Command::Http { port, hostname, domain, no_inspect, no_reconnect, password } => {
             commands::http::run(
                 runtime,
-                port,
+                relay_cli::client::LocalTarget::port(port),
+                hostname,
+                domain,
+                !no_inspect,
+                !no_reconnect,
+                password,
+            )
+            .await
+        }
+        Command::Share {
+            local_host,
+            port,
+            hostname,
+            domain,
+            no_inspect,
+            no_reconnect,
+            password,
+        } => {
+            commands::http::run(
+                runtime,
+                relay_cli::client::LocalTarget::with_host(port, local_host),
                 hostname,
                 domain,
                 !no_inspect,

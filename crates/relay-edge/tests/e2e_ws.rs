@@ -170,7 +170,11 @@ async fn ws_tunnel_end_to_end() {
     };
     let hostname = public_url.strip_prefix("http://").expect("url starts with http").to_string();
 
-    tokio::spawn(relay_cli::client::accept_and_proxy(conn.clone(), local_port, None));
+    tokio::spawn(relay_cli::client::accept_and_proxy(
+        conn.clone(),
+        relay_cli::client::LocalTarget::port(local_port),
+        None,
+    ));
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Build a WS request pointed at 127.0.0.1:<http_port> but with the

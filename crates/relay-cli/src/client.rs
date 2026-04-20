@@ -8,9 +8,31 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::UnboundedSender;
 
+/// Where the CLI sends incoming tunnel traffic on this machine.
+///
+/// `host_header` is for puma-dev-style local setups that route by Host name
+/// (e.g. `admin.sample.test` → a Rails app on some ephemeral port). When set,
+/// we still dial `127.0.0.1:port` but write `Host: <host_header>` on the
+/// outbound request so the local reverse-proxy can route it.
+#[derive(Clone, Debug)]
+pub struct LocalTarget {
+    pub port: u16,
+    pub host_header: Option<String>,
+}
+
+impl LocalTarget {
+    pub fn port(port: u16) -> Self {
+        Self { port, host_header: None }
+    }
+
+    pub fn with_host(port: u16, host_header: String) -> Self {
+        Self { port, host_header: Some(host_header) }
+    }
+}
+
 pub async fn accept_and_proxy(
     conn: quinn::Connection,
-    local_port: u16,
+    target: LocalTarget,
     events: Option<UnboundedSender<ReqEvent>>,
 ) -> anyhow::Result<()> {
     let http_client =
@@ -30,8 +52,9 @@ pub async fn accept_and_proxy(
         };
         let client = http_client.clone();
         let ev = events.clone();
+        let tgt = target.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_stream(send, recv, local_port, client, ev).await {
+            if let Err(e) = handle_stream(send, recv, tgt, client, ev).await {
                 tracing::warn!(e = %format!("{e:#}"), "stream proxy failed");
             }
         });
@@ -41,17 +64,17 @@ pub async fn accept_and_proxy(
 async fn handle_stream(
     send: quinn::SendStream,
     mut recv: quinn::RecvStream,
-    local_port: u16,
+    target: LocalTarget,
     http_client: reqwest::Client,
     events: Option<UnboundedSender<ReqEvent>>,
 ) -> anyhow::Result<()> {
     let open: StreamOpen = relay_proto::read_frame(&mut recv).await?;
     match open {
         StreamOpen::Http(hdr) if is_ws_upgrade_request(&hdr) => {
-            proxy_http_upgrade(send, recv, hdr, local_port).await
+            proxy_http_upgrade(send, recv, hdr, &target).await
         }
-        StreamOpen::Http(hdr) => proxy_http(send, recv, hdr, local_port, http_client, events).await,
-        StreamOpen::Tcp(hdr) => proxy_tcp(send, recv, hdr, local_port).await,
+        StreamOpen::Http(hdr) => proxy_http(send, recv, hdr, &target, http_client, events).await,
+        StreamOpen::Tcp(hdr) => proxy_tcp(send, recv, hdr, target.port).await,
     }
 }
 
@@ -128,7 +151,7 @@ async fn proxy_http(
     mut send: quinn::SendStream,
     recv: quinn::RecvStream,
     hdr: HttpRequestHeader,
-    local_port: u16,
+    target: &LocalTarget,
     http_client: reqwest::Client,
     events: Option<UnboundedSender<ReqEvent>>,
 ) -> anyhow::Result<()> {
@@ -136,7 +159,7 @@ async fn proxy_http(
     let method_str = hdr.method.clone();
     let path_str = hdr.path.clone();
 
-    let url = format!("http://127.0.0.1:{local_port}{}", hdr.path);
+    let url = format!("http://127.0.0.1:{}{}", target.port, hdr.path);
     let method = reqwest::Method::from_bytes(hdr.method.as_bytes())?;
     let mut req = http_client.request(method, &url);
 
@@ -147,6 +170,11 @@ async fn proxy_http(
             continue;
         }
         req = req.header(k, v);
+    }
+    if let Some(host) = &target.host_header {
+        // Override the Host header so puma-dev (or another Host-based router)
+        // sees the name the user mapped, not `127.0.0.1:port`.
+        req = req.header("Host", host);
     }
 
     let body_stream = tokio_util::io::ReaderStream::new(recv);
@@ -163,7 +191,8 @@ async fn proxy_http(
             };
             relay_proto::write_frame(&mut send, &header).await?;
             send.write_all(
-                format!("relay cli could not reach local service on :{local_port}: {e}").as_bytes(),
+                format!("relay cli could not reach local service on :{}: {e}", target.port)
+                    .as_bytes(),
             )
             .await?;
             let _ = send.finish();
@@ -220,9 +249,9 @@ async fn proxy_http_upgrade(
     mut send: quinn::SendStream,
     mut recv: quinn::RecvStream,
     hdr: HttpRequestHeader,
-    local_port: u16,
+    target: &LocalTarget,
 ) -> anyhow::Result<()> {
-    let mut tcp = match TcpStream::connect(("127.0.0.1", local_port)).await {
+    let mut tcp = match TcpStream::connect(("127.0.0.1", target.port)).await {
         Ok(t) => t,
         Err(e) => {
             let header = HttpResponseHeader {
@@ -232,12 +261,21 @@ async fn proxy_http_upgrade(
             };
             relay_proto::write_frame(&mut send, &header).await?;
             send.write_all(
-                format!("relay cli could not reach local service on :{local_port}: {e}").as_bytes(),
+                format!("relay cli could not reach local service on :{}: {e}", target.port)
+                    .as_bytes(),
             )
             .await?;
             let _ = send.finish();
             return Ok(());
         }
+    };
+
+    // Host value to write to the local socket. With `--host` the user wants a
+    // specific name (puma-dev routing). Otherwise the tunneled Host wouldn't
+    // match the local dev server's expectations, so fall back to loopback.
+    let host_line = match &target.host_header {
+        Some(h) => h.clone(),
+        None => format!("127.0.0.1:{}", target.port),
     };
 
     let mut req_bytes = Vec::with_capacity(512);
@@ -249,10 +287,8 @@ async fn proxy_http_upgrade(
     for (k, v) in &hdr.headers {
         let lower = k.to_ascii_lowercase();
         if lower == "host" {
-            // The tunneled Host (e.g. andrea.sharedwithrelay.com) wouldn't
-            // match the local dev server's expectations; rewrite to loopback.
-            req_bytes.extend_from_slice(b"Host: 127.0.0.1:");
-            req_bytes.extend_from_slice(local_port.to_string().as_bytes());
+            req_bytes.extend_from_slice(b"Host: ");
+            req_bytes.extend_from_slice(host_line.as_bytes());
             req_bytes.extend_from_slice(b"\r\n");
             host_written = true;
             continue;
@@ -263,8 +299,8 @@ async fn proxy_http_upgrade(
         req_bytes.extend_from_slice(b"\r\n");
     }
     if !host_written {
-        req_bytes.extend_from_slice(b"Host: 127.0.0.1:");
-        req_bytes.extend_from_slice(local_port.to_string().as_bytes());
+        req_bytes.extend_from_slice(b"Host: ");
+        req_bytes.extend_from_slice(host_line.as_bytes());
         req_bytes.extend_from_slice(b"\r\n");
     }
     req_bytes.extend_from_slice(b"\r\n");
