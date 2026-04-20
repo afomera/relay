@@ -174,6 +174,8 @@ async fn main() -> anyhow::Result<()> {
             no_reconnect,
             password,
         } => {
+            validate_share_local_host(&local_host)?;
+            warn_on_share_wildcard_mismatch(&local_host, hostname.as_deref(), domain.as_deref());
             commands::http::run(
                 runtime,
                 relay_cli::client::LocalTarget::with_host(port, local_host),
@@ -186,5 +188,45 @@ async fn main() -> anyhow::Result<()> {
             .await
         }
         Command::Tcp { port } => commands::tcp::run(runtime, port).await,
+    }
+}
+
+/// The `share` local-host pattern supports a single wildcard `*` in the
+/// leading label (e.g. `*.sample.test`). Reject anything fancier so we fail
+/// with a clear message before opening a QUIC connection.
+fn validate_share_local_host(local_host: &str) -> anyhow::Result<()> {
+    let stars = local_host.matches('*').count();
+    if stars == 0 {
+        return Ok(());
+    }
+    if stars > 1 {
+        anyhow::bail!(
+            "--local-host supports at most one '*' (got {stars}): {local_host}\n\
+             example: `relay share '*.sample.test'`"
+        );
+    }
+    // Exactly one star: must be the full leading label (`*.…`), nothing else.
+    if !local_host.starts_with("*.") {
+        anyhow::bail!(
+            "wildcard '*' must be the leading label, not a partial one: {local_host}\n\
+             example: `relay share '*.sample.test'`"
+        );
+    }
+    Ok(())
+}
+
+fn warn_on_share_wildcard_mismatch(local_host: &str, hostname: Option<&str>, domain: Option<&str>) {
+    if !local_host.contains('*') {
+        return;
+    }
+    let public_is_wild =
+        hostname.is_some_and(|h| h.contains('*')) || domain.is_some_and(|d| d.contains('*'));
+    if !public_is_wild {
+        eprintln!(
+            "note: local host `{local_host}` is wildcarded but the public tunnel isn't —\n\
+             every request will substitute the same leading label. Register a wildcard\n\
+             public tunnel (e.g. `--hostname '*.acme' --domain sharedwithrelay.com`) to\n\
+             route per-subdomain."
+        );
     }
 }

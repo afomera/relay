@@ -14,6 +14,12 @@ use tokio::sync::mpsc::UnboundedSender;
 /// (e.g. `admin.sample.test` → a Rails app on some ephemeral port). When set,
 /// we still dial `127.0.0.1:port` but write `Host: <host_header>` on the
 /// outbound request so the local reverse-proxy can route it.
+///
+/// `host_header` may contain a single `*` in the leading label — that's a
+/// wildcard pattern. At request time, `*` is replaced with the leading label
+/// of the incoming request's Host, so a wildcard public tunnel like
+/// `*.acme.sharedwithrelay.com` paired with `*.sample.test` forwards
+/// `foo.acme.sharedwithrelay.com` → local `Host: foo.sample.test`.
 #[derive(Clone, Debug)]
 pub struct LocalTarget {
     pub port: u16,
@@ -28,6 +34,31 @@ impl LocalTarget {
     pub fn with_host(port: u16, host_header: String) -> Self {
         Self { port, host_header: Some(host_header) }
     }
+}
+
+/// Resolve `host_header` against the incoming request's Host value. Returns
+/// the string we should write for `Host:` on the outbound request.
+///
+/// - No `*` → return `pattern` verbatim.
+/// - Contains `*` → replace the `*` with the leading label of `incoming_host`
+///   (port stripped, lowercased). If the incoming Host has no label (empty or
+///   looks like an IP), the `*` is replaced with an empty string — puma-dev
+///   will 404 and that's the right signal.
+pub(crate) fn resolve_host_header(pattern: &str, incoming_host: &str) -> String {
+    if !pattern.contains('*') {
+        return pattern.to_string();
+    }
+    let host_only = incoming_host.split(':').next().unwrap_or(incoming_host).to_ascii_lowercase();
+    let leading = host_only.split('.').next().unwrap_or("");
+    pattern.replacen('*', leading, 1)
+}
+
+fn incoming_host_value(hdr: &HttpRequestHeader) -> &str {
+    hdr.headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("host"))
+        .map(|(_, v)| v.as_str())
+        .unwrap_or("")
 }
 
 pub async fn accept_and_proxy(
@@ -171,9 +202,12 @@ async fn proxy_http(
         }
         req = req.header(k, v);
     }
-    if let Some(host) = &target.host_header {
+    if let Some(pattern) = &target.host_header {
         // Override the Host header so puma-dev (or another Host-based router)
-        // sees the name the user mapped, not `127.0.0.1:port`.
+        // sees the name the user mapped, not `127.0.0.1:port`. Patterns with
+        // `*` get the leading label substituted from the incoming Host so
+        // wildcard tunnels route 1:1 per-subdomain.
+        let host = resolve_host_header(pattern, incoming_host_value(&hdr));
         req = req.header("Host", host);
     }
 
@@ -270,11 +304,12 @@ async fn proxy_http_upgrade(
         }
     };
 
-    // Host value to write to the local socket. With `--host` the user wants a
-    // specific name (puma-dev routing). Otherwise the tunneled Host wouldn't
-    // match the local dev server's expectations, so fall back to loopback.
+    // Host value to write to the local socket. With `share` the user wants a
+    // specific name (puma-dev routing), possibly with `*` substitution from
+    // the incoming Host. Otherwise the tunneled Host wouldn't match the local
+    // dev server's expectations, so fall back to loopback.
     let host_line = match &target.host_header {
-        Some(h) => h.clone(),
+        Some(pattern) => resolve_host_header(pattern, incoming_host_value(&hdr)),
         None => format!("127.0.0.1:{}", target.port),
     };
 
@@ -393,4 +428,46 @@ async fn proxy_http_upgrade(
     };
     tokio::join!(quic_to_tcp, tcp_to_quic);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_host_header;
+
+    #[test]
+    fn literal_host_passthrough() {
+        assert_eq!(
+            resolve_host_header("admin.sample.test", "anything.else.com"),
+            "admin.sample.test"
+        );
+    }
+
+    #[test]
+    fn wildcard_substitutes_leading_label() {
+        assert_eq!(
+            resolve_host_header("*.sample.test", "foo.acme.sharedwithrelay.com"),
+            "foo.sample.test"
+        );
+    }
+
+    #[test]
+    fn wildcard_strips_port_from_incoming() {
+        assert_eq!(
+            resolve_host_header("*.sample.test", "tenant1.edge.example.com:8443"),
+            "tenant1.sample.test"
+        );
+    }
+
+    #[test]
+    fn wildcard_lowercases_incoming_label() {
+        assert_eq!(
+            resolve_host_header("*.sample.test", "MixedCase.example.com"),
+            "mixedcase.sample.test"
+        );
+    }
+
+    #[test]
+    fn wildcard_empty_incoming_substitutes_empty() {
+        assert_eq!(resolve_host_header("*.sample.test", ""), ".sample.test");
+    }
 }
