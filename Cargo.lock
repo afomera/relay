@@ -2441,7 +2441,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "relay-acme"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "aes-gcm-siv",
  "anyhow",
@@ -2463,7 +2463,7 @@ dependencies = [
 
 [[package]]
 name = "relay-cli"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2497,7 +2497,7 @@ dependencies = [
 
 [[package]]
 name = "relay-control"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "relay-db"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "serde",
  "serde_json",
@@ -2549,7 +2549,7 @@ dependencies = [
 
 [[package]]
 name = "relay-dns"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -2562,7 +2562,7 @@ dependencies = [
 
 [[package]]
 name = "relay-edge"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2605,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "relay-proto"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "ciborium",
  "serde",
@@ -2617,7 +2617,7 @@ dependencies = [
 
 [[package]]
 name = "relay-server"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "anyhow",
  "axum",
